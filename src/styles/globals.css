@@ -1,0 +1,45 @@
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;600;700;800&family=Nunito:wght@400;500;600;700;800&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Nunito', sans-serif; background: #FFFBF7; color: #1E1347; }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-thumb { background: #6C4BF6; border-radius: 4px; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-14px); }
+}
+@keyframes pawFloat {
+  0%   { transform: translateY(110vh) rotate(0deg); opacity: 0; }
+  10%  { opacity: 0.2; }
+  90%  { opacity: 0.2; }
+  100% { transform: translateY(-100px) rotate(360deg); opacity: 0; }
+}
+
+.fade-up   { animation: fadeUp 0.4s ease forwards; }
+.float-anim { animation: float 2.5s ease-in-out infinite; }
+.paw-float  { animation: pawFloat linear infinite; position: absolute; pointer-events: none; font-size: 1.6rem; }
+
+.btn-primary {
+  @apply bg-gradient-to-r from-orange to-pink text-white font-bold rounded-xl px-5 py-2.5
+         transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg cursor-pointer border-0;
+}
+.btn-secondary {
+  @apply bg-pawlight text-purple font-bold rounded-xl px-5 py-2.5
+         transition-all duration-200 hover:bg-pawborder cursor-pointer border-0;
+}
+.card {
+  @apply bg-white rounded-2xl shadow-sm border border-pawborder p-4;
+}
+.input {
+  @apply w-full border-2 border-pawborder rounded-xl px-3 py-2.5 font-nunito text-sm
+         outline-none transition-all duration-200 focus:border-orange bg-white;
+}
+.label { @apply block font-bold text-xs text-pawdark mt-3 mb-1; }
