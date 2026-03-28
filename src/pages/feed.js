@@ -302,20 +302,40 @@ const postsChannel = supabase
   }
 
   const toggleLike = async (post) => {
-    const newLikes = (post.likes || 0) + (post.liked_by_me ? -1 : 1)
-    await supabase.from('posts').update({ likes: newLikes }).eq('id', post.id)
-    setPosts(posts.map(p => p.id === post.id
-      ? { ...p, likes: newLikes, liked_by_me: !p.liked_by_me } : p))
+  // Optimistic update first
+  const newLikes = (post.likes || 0) + (post.liked_by_me ? -1 : 1)
+  setPosts(prev => prev.map(p =>
+    p.id === post.id
+      ? { ...p, likes: newLikes, liked_by_me: !p.liked_by_me }
+      : p
+  ))
 
-    if (!post.liked_by_me && post.pets?.user_id && post.pets.user_id !== user.id) {
-      await supabase.from('notifications').insert({
-        user_id: post.pets.user_id,
-        type: 'like',
-        message: `${pet.pet_name} pawed your post! ❤️`,
-      })
-      playSound('notification')
-    }
+  // Update in database
+  const { error } = await supabase
+    .from('posts')
+    .update({ likes: newLikes })
+    .eq('id', post.id)
+
+  if (error) {
+    // Revert if failed
+    console.error('Like error:', error)
+    setPosts(prev => prev.map(p =>
+      p.id === post.id
+        ? { ...p, likes: post.likes, liked_by_me: post.liked_by_me }
+        : p
+    ))
+    return
   }
+
+  // Send notification to post owner
+  if (!post.liked_by_me && post.pets?.user_id && post.pets.user_id !== user.id) {
+    await supabase.from('notifications').insert({
+      user_id: post.pets.user_id,
+      type: 'like',
+      message: `${pet.pet_name} pawed your post! ❤️`,
+    })
+  }
+}
 
   const handleShare = (post) => {
     const url = `${window.location.origin}/post/${post.id}`
