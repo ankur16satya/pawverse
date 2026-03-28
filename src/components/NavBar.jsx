@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 
-export default function NavBar({ user, pet }) {
+export default function NavBar({ user, pet, unreadMessages = 0 }) {
   const router = useRouter()
   const path = router.pathname
   const [notifications, setNotifications] = useState([])
@@ -12,14 +12,14 @@ export default function NavBar({ user, pet }) {
   const notifRef = useRef(null)
 
   const nav = [
-    { href: '/feed',        icon: '🏠', label: 'Feed' },
-    { href: '/marketplace', icon: '🛍️', label: 'Market' },
-    { href: '/health',      icon: '🩺', label: 'Health' },
-    { href: '/chat',        icon: '💬', label: 'Chat' },
-    { href: '/adopt',       icon: '🏠', label: 'Adopt' },
-    { href: '/coins',       icon: '🪙', label: 'Coins' },
-    { href: '/friends',     icon: '👫', label: 'Friends' },
-  ]
+  { href: '/feed',        icon: '🏠', label: 'Feed' },
+  { href: '/marketplace', icon: '🛍️', label: 'Market' },
+  { href: '/health',      icon: '🩺', label: 'Health' },
+  { href: '/chat',        icon: '💬', label: 'Chat' },
+  { href: '/adopt',       icon: '🏠', label: 'Adopt' },
+  { href: '/coins',       icon: '🪙', label: 'Coins' },
+  { href: '/friends',     icon: '👫', label: 'Friends' },
+]
 
   useEffect(() => {
     if (!user) return
@@ -159,36 +159,49 @@ export default function NavBar({ user, pet }) {
       {/* Nav links */}
       <div style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: 2 }}>
         {nav.map(n => (
-          <button key={n.href} onClick={() => router.push(n.href)}
-            title={n.label}
-            style={{
-              padding: '7px 14px', border: 'none', cursor: 'pointer', fontSize: '1.15rem',
-              borderRadius: 10, transition: 'background 0.2s',
-              background: path === n.href ? '#F3F0FF' : 'transparent',
-              position: 'relative'
-            }}>
-            {n.icon}
-            {/* Friends badge on nav icon */}
-            {n.href === '/friends' && pendingFriendCount > 0 && (
-              <div style={{
-                position: 'absolute', top: 4, right: 4,
-                minWidth: 16, height: 16, background: '#FF4757',
-                borderRadius: '50%', border: '2px solid #fff',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '0.6rem', fontWeight: 800, color: '#fff',
-                fontFamily: 'Nunito, sans-serif'
-              }}>
-                {pendingFriendCount > 9 ? '9+' : pendingFriendCount}
-              </div>
-            )}
-            {path === n.href && (
-              <div style={{
-                position: 'absolute', bottom: 0, left: '25%', right: '25%',
-                height: 3, background: '#FF6B35', borderRadius: 2
-              }} />
-            )}
-          </button>
-        ))}
+  <button key={n.href} onClick={() => router.push(n.href)}
+    title={n.label}
+    style={{
+      padding: '7px 14px', border: 'none', cursor: 'pointer', fontSize: '1.15rem',
+      borderRadius: 10, transition: 'background 0.2s',
+      background: path === n.href ? '#F3F0FF' : 'transparent',
+      position: 'relative'
+    }}>
+    {n.icon}
+    {/* Unread messages badge on chat */}
+    {n.href === '/chat' && unreadMessages > 0 && (
+      <div style={{
+        position: 'absolute', top: 4, right: 4,
+        minWidth: 16, height: 16, background: '#FF4757',
+        borderRadius: '50%', border: '2px solid #fff',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: '0.6rem', fontWeight: 800, color: '#fff',
+        fontFamily: 'Nunito, sans-serif'
+      }}>
+        {unreadMessages > 9 ? '9+' : unreadMessages}
+      </div>
+    )}
+    {/* Friends badge */}
+    {n.href === '/friends' && pendingFriendCount > 0 && (
+      <div style={{
+        position: 'absolute', top: 4, right: 4,
+        minWidth: 16, height: 16, background: '#FF4757',
+        borderRadius: '50%', border: '2px solid #fff',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: '0.6rem', fontWeight: 800, color: '#fff',
+        fontFamily: 'Nunito, sans-serif'
+      }}>
+        {pendingFriendCount > 9 ? '9+' : pendingFriendCount}
+      </div>
+    )}
+    {path === n.href && (
+      <div style={{
+        position: 'absolute', bottom: 0, left: '25%', right: '25%',
+        height: 3, background: '#FF6B35', borderRadius: 2
+      }} />
+    )}
+  </button>
+))}
       </div>
 
       {/* Right side */}

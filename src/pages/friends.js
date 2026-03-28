@@ -189,16 +189,25 @@ export default function Friends() {
   }
 
   const handleCancelRequest = async (req) => {
-    setActionLoading(prev => ({ ...prev, [req.id]: 'cancelling' }))
+  setActionLoading(prev => ({ ...prev, [req.id]: 'cancelling' }))
 
-    await supabase
-      .from('friend_requests')
-      .delete()
-      .eq('id', req.id)
+  const { error } = await supabase
+    .from('friend_requests')
+    .delete()
+    .eq('id', req.id)
+    .eq('sender_id', user.id) // extra safety check
 
-    setSentRequests(prev => prev.filter(r => r.id !== req.id))
+  if (error) {
+    console.error('Cancel error:', error)
+    alert('Could not cancel request. Please try again.')
     setActionLoading(prev => ({ ...prev, [req.id]: null }))
+    return
   }
+
+  // Only update UI if database delete was successful
+  setSentRequests(prev => prev.filter(r => r.id !== req.id))
+  setActionLoading(prev => ({ ...prev, [req.id]: null }))
+}
 
   const handleAddFriend = async (suggPet) => {
     if (!user || !pet) return
@@ -258,8 +267,8 @@ export default function Friends() {
   )
 
   const tabs = [
-    { key: 'requests',    label: '🐾 Requests',     count: pendingRequests.length },
-    { key: 'sent',        label: '📤 Sent',          count: sentRequests.length },
+    { key: 'requests',    label: '🐾 Requests Recieved',     count: pendingRequests.length },
+    { key: 'sent',        label: '📤 Requests Sent',          count: sentRequests.length },
     { key: 'friends',     label: '✅ My Friends',    count: friends.length },
     { key: 'suggestions', label: '💡 Suggestions',   count: suggestions.length },
   ]
