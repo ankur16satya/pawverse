@@ -3,6 +3,8 @@ import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
 
+const EMOJIS = ['😀','😂','🥰','😍','🤩','😎','🥳','😢','😤','🤔','🤗','😜','🥺','❤️','🔥','✨','🎉','👍','👎','🐾','🐶','🐱','🌸','🌈']
+
 export default function Feed() {
   const router = useRouter()
   const [user, setUser] = useState(null)
@@ -16,9 +18,36 @@ export default function Feed() {
   const [imagePreview, setImagePreview] = useState(null)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [friendStatuses, setFriendStatuses] = useState({})
+  const [lightboxImg, setLightboxImg] = useState(null)
+  const [activeComments, setActiveComments] = useState({})
+  const [commentTexts, setCommentTexts] = useState({})
+  const [replyTo, setReplyTo] = useState({})
+  const [openMenu, setOpenMenu] = useState(null)
+  const [editingPost, setEditingPost] = useState(null)
+  const [editText, setEditText] = useState('')
   const fileInputRef = useRef(null)
+  const menuRef = useRef(null)
 
   useEffect(() => { init() }, [])
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setOpenMenu(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const playSound = (type) => {
+    try {
+      const src = type === 'message' ? '/message.mp3' : '/notification.mp3'
+      const audio = new Audio(src)
+      audio.volume = 0.5
+      audio.play().catch(() => {})
+    } catch (e) {}
+  }
 
   const init = async () => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -29,29 +58,17 @@ export default function Feed() {
       .from('pets').select('*').eq('user_id', session.user.id).single()
     setPet(petData)
 
-    const { data: postsData } = await supabase
-      .from('posts')
-      .select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url)')
-      .order('created_at', { ascending: false })
-      .limit(20)
-    setPosts(postsData || [])
+    await fetchPosts()
 
     const { data: others } = await supabase
       .from('pets').select('*')
       .neq('user_id', session.user.id).limit(6)
     setSuggestions(others || [])
 
-    // Fetch existing friend request statuses
     const { data: sentRequests } = await supabase
-      .from('friend_requests')
-      .select('*')
-      .eq('sender_id', session.user.id)
-
+      .from('friend_requests').select('*').eq('sender_id', session.user.id)
     const { data: receivedRequests } = await supabase
-      .from('friend_requests')
-      .select('*')
-      .eq('receiver_id', session.user.id)
-
+      .from('friend_requests').select('*').eq('receiver_id', session.user.id)
     const statuses = {}
     ;(sentRequests || []).forEach(r => { statuses[r.receiver_id] = r.status })
     ;(receivedRequests || []).forEach(r => { statuses[r.sender_id] = r.status })
@@ -60,47 +77,122 @@ export default function Feed() {
     setLoading(false)
   }
 
-  const handleAddFriend = async (otherPet) => {
-    if (!user || !pet) return
-    const existingStatus = friendStatuses[otherPet.user_id]
-    if (existingStatus) return
+  const fetchPosts = async () => {
+    const { data: postsData } = await supabase
+      .from('posts')
+      .select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id)')
+      .eq('hidden', false)
+      .order('created_at', { ascending: false })
+      .limit(20)
+    setPosts(postsData || [])
+  }
 
-    // Optimistic update
-    setFriendStatuses(prev => ({ ...prev, [otherPet.user_id]: 'pending' }))
+  const fetchComments = async (postId) => {
+    const { data } = await supabase
+      .from('comments')
+      .select('*, pets(pet_name, emoji, avatar_url, user_id)')
+      .eq('post_id', postId)
+      .is('parent_id', null)
+      .order('created_at', { ascending: true })
 
-    const { error } = await supabase.from('friend_requests').insert({
-      sender_id: user.id,
-      receiver_id: otherPet.user_id,
-      status: 'pending'
-    })
+    const withReplies = await Promise.all((data || []).map(async (comment) => {
+      const { data: replies } = await supabase
+        .from('comments')
+        .select('*, pets(pet_name, emoji, avatar_url, user_id)')
+        .eq('parent_id', comment.id)
+        .order('created_at', { ascending: true })
+      return { ...comment, replies: replies || [] }
+    }))
 
-    if (error) {
-      setFriendStatuses(prev => ({ ...prev, [otherPet.user_id]: null }))
-      return
+    setActiveComments(prev => ({ ...prev, [postId]: withReplies }))
+  }
+
+  const toggleComments = async (postId) => {
+    if (activeComments[postId] !== undefined) {
+      setActiveComments(prev => {
+        const next = { ...prev }
+        delete next[postId]
+        return next
+      })
+    } else {
+      await fetchComments(postId)
+    }
+  }
+
+  const handleComment = async (postId, parentId = null) => {
+    const key = parentId || postId
+    const text = commentTexts[key]?.trim()
+    if (!text || !pet) return
+
+    const { data: newComment, error } = await supabase.from('comments').insert({
+      post_id: postId,
+      pet_id: pet.id,
+      user_id: user.id,
+      content: text,
+      parent_id: parentId || null,
+    }).select('*, pets(pet_name, emoji, avatar_url, user_id)').single()
+
+    if (error || !newComment) return
+
+    setCommentTexts(prev => ({ ...prev, [key]: '' }))
+    setReplyTo(prev => ({ ...prev, [postId]: null }))
+
+    // Update comments in UI
+    if (parentId) {
+      setActiveComments(prev => ({
+        ...prev,
+        [postId]: (prev[postId] || []).map(c =>
+          c.id === parentId
+            ? { ...c, replies: [...(c.replies || []), { ...newComment, replies: [] }] }
+            : c
+        )
+      }))
+    } else {
+      setActiveComments(prev => ({
+        ...prev,
+        [postId]: [...(prev[postId] || []), { ...newComment, replies: [] }]
+      }))
     }
 
-    // Send notification to receiver
-    await supabase.from('notifications').insert({
-      user_id: otherPet.user_id,
-      type: 'friend_request',
-      message: `${pet.pet_name} sent you a friend request! 🐾`,
-    })
+    // Update comments count
+    setPosts(prev => prev.map(p =>
+      p.id === postId ? { ...p, comments_count: (p.comments_count || 0) + 1 } : p
+    ))
+
+    // Notify post owner
+    const post = posts.find(p => p.id === postId)
+    if (post?.pets?.user_id && post.pets.user_id !== user.id) {
+      await supabase.from('notifications').insert({
+        user_id: post.pets.user_id,
+        type: 'comment',
+        message: `${pet.pet_name} commented on your post: "${text.slice(0, 40)}${text.length > 40 ? '...' : ''}" 💬`,
+      })
+      playSound('notification')
+    }
   }
 
-  const getFriendButtonLabel = (userId) => {
-    const status = friendStatuses[userId]
-    if (status === 'pending') return 'Request Sent 🐾'
-    if (status === 'accepted') return 'Friends ✅'
-    if (status === 'declined') return 'Declined'
-    return '+ Add'
+  const handleDeleteComment = async (comment, postId) => {
+    await supabase.from('comments').delete().eq('id', comment.id)
+    setActiveComments(prev => ({
+      ...prev,
+      [postId]: (prev[postId] || []).filter(c => c.id !== comment.id)
+    }))
+    setPosts(prev => prev.map(p =>
+      p.id === postId ? { ...p, comments_count: Math.max((p.comments_count || 1) - 1, 0) } : p
+    ))
   }
 
-  const getFriendButtonStyle = (userId) => {
-    const status = friendStatuses[userId]
-    if (status === 'pending') return { background: '#F3F0FF', color: '#6C4BF6', border: '1px solid #6C4BF6' }
-    if (status === 'accepted') return { background: '#E8F8E8', color: '#22C55E', border: '1px solid #22C55E' }
-    if (status === 'declined') return { background: '#F3F0FF', color: '#aaa', border: '1px solid #ddd' }
-    return {}
+  const handleLikeComment = async (comment, postId) => {
+    const newLikes = (comment.likes || 0) + (comment.likedByMe ? -1 : 1)
+    await supabase.from('comments').update({ likes: newLikes }).eq('id', comment.id)
+    setActiveComments(prev => ({
+      ...prev,
+      [postId]: (prev[postId] || []).map(c =>
+        c.id === comment.id
+          ? { ...c, likes: newLikes, likedByMe: !c.likedByMe }
+          : c
+      )
+    }))
   }
 
   const handleImageSelect = (e) => {
@@ -121,11 +213,9 @@ export default function Feed() {
     const ext = file.name.split('.').pop()
     const fileName = `${userId}/${Date.now()}.${ext}`
     const { error } = await supabase.storage
-      .from('post-images')
-      .upload(fileName, file, { cacheControl: '3600', upsert: false })
+      .from('post-images').upload(fileName, file, { cacheControl: '3600', upsert: false })
     if (error) throw error
-    const { data: { publicUrl } } = supabase.storage
-      .from('post-images').getPublicUrl(fileName)
+    const { data: { publicUrl } } = supabase.storage.from('post-images').getPublicUrl(fileName)
     return publicUrl
   }
 
@@ -140,11 +230,14 @@ export default function Feed() {
         imageUrl = await uploadImage(selectedImage, user.id)
         setUploadingImage(false)
       }
+
       const { data, error } = await supabase.from('posts').insert({
         pet_id: pet.id,
         content: postText,
         image_url: imageUrl,
-      }).select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url)').single()
+        hidden: false,
+        edited: false,
+      }).select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id)').single()
 
       if (!error && data) {
         setPosts([data, ...posts])
@@ -153,6 +246,28 @@ export default function Feed() {
         await supabase.from('pets')
           .update({ paw_coins: (pet.paw_coins || 0) + 10 }).eq('id', pet.id)
         setPet(p => ({ ...p, paw_coins: (p.paw_coins || 0) + 10 }))
+
+        // Notify all friends about new post
+        const { data: friendsSent } = await supabase
+          .from('friend_requests').select('receiver_id')
+          .eq('sender_id', user.id).eq('status', 'accepted')
+        const { data: friendsReceived } = await supabase
+          .from('friend_requests').select('sender_id')
+          .eq('receiver_id', user.id).eq('status', 'accepted')
+
+        const friendIds = [
+          ...(friendsSent || []).map(f => f.receiver_id),
+          ...(friendsReceived || []).map(f => f.sender_id)
+        ]
+
+        for (const friendId of friendIds) {
+          await supabase.from('notifications').insert({
+            user_id: friendId,
+            type: 'post',
+            message: `${pet.pet_name} just posted something new! 🐾`,
+          })
+        }
+        playSound('notification')
       }
     } catch (err) {
       alert('Failed to post. Please try again.')
@@ -166,17 +281,76 @@ export default function Feed() {
     setPosts(posts.map(p => p.id === post.id
       ? { ...p, likes: newLikes, liked_by_me: !p.liked_by_me } : p))
 
-    if (!post.liked_by_me && post.pets) {
-      const { data: ownerPet } = await supabase
-        .from('pets').select('user_id').eq('id', post.pet_id).single()
-      if (ownerPet && ownerPet.user_id !== user.id) {
-        await supabase.from('notifications').insert({
-          user_id: ownerPet.user_id,
-          type: 'like',
-          message: `${pet.pet_name} pawed your post! ❤️`,
-        })
-      }
+    if (!post.liked_by_me && post.pets?.user_id && post.pets.user_id !== user.id) {
+      await supabase.from('notifications').insert({
+        user_id: post.pets.user_id,
+        type: 'like',
+        message: `${pet.pet_name} pawed your post! ❤️`,
+      })
+      playSound('notification')
     }
+  }
+
+  const handleShare = (post) => {
+    const url = `${window.location.origin}/post/${post.id}`
+    navigator.clipboard.writeText(url).then(() => {
+      alert('Post link copied to clipboard! 🔗')
+    }).catch(() => {
+      alert(`Share this link: ${url}`)
+    })
+    // Update share count
+    supabase.from('posts')
+      .update({ shares_count: (post.shares_count || 0) + 1 })
+      .eq('id', post.id)
+    setPosts(prev => prev.map(p =>
+      p.id === post.id ? { ...p, shares_count: (p.shares_count || 0) + 1 } : p
+    ))
+  }
+
+  const handleEditPost = async (post) => {
+    if (!editText.trim()) return
+    await supabase.from('posts').update({ content: editText, edited: true }).eq('id', post.id)
+    setPosts(prev => prev.map(p =>
+      p.id === post.id ? { ...p, content: editText, edited: true } : p
+    ))
+    setEditingPost(null)
+    setEditText('')
+    setOpenMenu(null)
+  }
+
+  const handleDeletePost = async (post) => {
+    if (!confirm('Delete this post?')) return
+    await supabase.from('posts').delete().eq('id', post.id)
+    setPosts(prev => prev.filter(p => p.id !== post.id))
+    setOpenMenu(null)
+  }
+
+  const handleHidePost = async (post) => {
+    await supabase.from('posts').update({ hidden: true }).eq('id', post.id)
+    setPosts(prev => prev.filter(p => p.id !== post.id))
+    setOpenMenu(null)
+  }
+
+  const handleAddFriend = async (otherPet) => {
+    if (!user || !pet) return
+    if (friendStatuses[otherPet.user_id]) return
+    setFriendStatuses(prev => ({ ...prev, [otherPet.user_id]: 'pending' }))
+    const { error } = await supabase.from('friend_requests').insert({
+      sender_id: user.id, receiver_id: otherPet.user_id, status: 'pending'
+    })
+    if (error) { setFriendStatuses(prev => ({ ...prev, [otherPet.user_id]: null })); return }
+    await supabase.from('notifications').insert({
+      user_id: otherPet.user_id, type: 'friend_request',
+      message: `${pet.pet_name} sent you a friend request! 🐾`,
+    })
+  }
+
+  const getFriendButtonLabel = (userId) => {
+    const status = friendStatuses[userId]
+    if (status === 'pending') return 'Request Sent 🐾'
+    if (status === 'accepted') return 'Friends ✅'
+    if (status === 'declined') return 'Declined'
+    return '+ Add'
   }
 
   const timeAgo = (ts) => {
@@ -196,6 +370,37 @@ export default function Feed() {
   return (
     <div style={{ background: '#FFFBF7', minHeight: '100vh' }}>
       <NavBar user={user} pet={pet} />
+
+      {/* 🖼️ LIGHTBOX */}
+      {lightboxImg && (
+        <div
+          onClick={() => setLightboxImg(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)',
+            zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 20, cursor: 'zoom-out'
+          }}>
+          <button
+            onClick={() => setLightboxImg(null)}
+            style={{
+              position: 'absolute', top: 18, right: 22, background: 'rgba(255,255,255,0.15)',
+              border: 'none', color: '#fff', fontSize: '1.5rem', cursor: 'pointer',
+              borderRadius: '50%', width: 40, height: 40,
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}>✕</button>
+          <img
+            src={lightboxImg}
+            alt="full view"
+            onClick={e => e.stopPropagation()}
+            style={{
+              maxWidth: '90vw', maxHeight: '88vh',
+              borderRadius: 16, objectFit: 'contain',
+              boxShadow: '0 8px 60px rgba(0,0,0,0.6)'
+            }}
+          />
+        </div>
+      )}
+
       <div style={{
         display: 'grid', gridTemplateColumns: '250px 1fr 250px', gap: 14,
         maxWidth: 1100, margin: '70px auto 0', padding: 14
@@ -205,12 +410,14 @@ export default function Feed() {
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             <div style={{ height: 60, background: 'linear-gradient(135deg, #FF6B35, #6C4BF6)' }} />
             <div style={{ padding: '0 14px 14px', textAlign: 'center' }}>
-              <div style={{
-                width: 52, height: 52, borderRadius: '50%', background: '#FFE8F0',
-                border: '3px solid #fff', margin: '-26px auto 6px',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '1.7rem', overflow: 'hidden'
-              }}>
+              <div
+                onClick={() => router.push('/profile')}
+                style={{
+                  width: 52, height: 52, borderRadius: '50%', background: '#FFE8F0',
+                  border: '3px solid #fff', margin: '-26px auto 6px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '1.7rem', overflow: 'hidden', cursor: 'pointer'
+                }}>
                 {pet?.avatar_url
                   ? <img src={pet.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   : pet?.emoji || '🐾'}
@@ -249,6 +456,8 @@ export default function Feed() {
 
         {/* FEED */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+          {/* Composer */}
           <div className="card">
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <div style={{
@@ -271,9 +480,11 @@ export default function Feed() {
                 }}
               />
             </div>
+
             {imagePreview && (
-              <div style={{ position: 'relative', marginTop: 10, borderRadius: 12, overflow: 'hidden', maxHeight: 300 }}>
-                <img src={imagePreview} alt="preview" style={{ width: '100%', maxHeight: 300, objectFit: 'cover', borderRadius: 12 }} />
+              <div style={{ position: 'relative', marginTop: 10 }}>
+                <img src={imagePreview} alt="preview"
+                  style={{ width: '100%', height: 200, objectFit: 'cover', borderRadius: 12, display: 'block' }} />
                 <button onClick={removeImage} style={{
                   position: 'absolute', top: 8, right: 8, width: 28, height: 28,
                   borderRadius: '50%', background: 'rgba(0,0,0,0.6)', color: '#fff',
@@ -282,6 +493,7 @@ export default function Feed() {
                 }}>✕</button>
               </div>
             )}
+
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
               <div style={{ display: 'flex', gap: 8 }}>
                 <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageSelect} style={{ display: 'none' }} />
@@ -315,58 +527,343 @@ export default function Feed() {
             </div>
           )}
 
-          {posts.map(post => (
-            <div key={post.id} className="card fade-up">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 11 }}>
-                <div style={{
-                  width: 44, height: 44, borderRadius: '50%', background: '#FFE8F0',
-                  border: '2px solid #FF6B35', display: 'flex', alignItems: 'center',
-                  justifyContent: 'center', fontSize: '1.4rem', flexShrink: 0, overflow: 'hidden'
-                }}>
-                  {post.pets?.avatar_url
-                    ? <img src={post.pets.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : post.pets?.emoji || '🐾'}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 700, fontSize: '0.95rem' }}>
-                    {post.pets?.pet_name || 'A Pet'}
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: '#6B7280' }}>
-                    Managed by {post.pets?.owner_name} · {timeAgo(post.created_at)}
-                  </div>
-                </div>
-                <span style={{ color: '#6B7280', fontSize: '1.1rem', cursor: 'pointer' }}>···</span>
-              </div>
-              {post.content && <p style={{ lineHeight: 1.65, fontSize: '0.9rem', marginBottom: 10 }}>{post.content}</p>}
-              {post.image_url && (
-                <div style={{ marginBottom: 10, borderRadius: 12, overflow: 'hidden' }}>
-                  <img src={post.image_url} alt="post" style={{ width: '100%', maxHeight: 400, objectFit: 'cover', borderRadius: 12, display: 'block' }} />
-                </div>
-              )}
-              <div style={{ fontSize: '0.78rem', color: '#6B7280', display: 'flex', justifyContent: 'space-between', marginBottom: 7 }}>
-                <span>❤️ {post.likes || 0} paws</span>
-                <span>{post.comments_count || 0} comments</span>
-              </div>
-              <div style={{ display: 'flex', gap: 3, paddingTop: 8, borderTop: '1px solid #EDE8FF' }}>
-                {[
-                  { label: post.liked_by_me ? '❤️ Pawed' : '🐾 Paw it', action: () => toggleLike(post), active: post.liked_by_me },
-                  { label: '💬 Comment', action: () => {} },
-                  { label: '🔗 Share', action: () => {} },
-                ].map(btn => (
-                  <button key={btn.label} onClick={btn.action}
+          {posts.map(post => {
+            const isMyPost = post.pets?.user_id === user?.id
+            const comments = activeComments[post.id]
+
+            return (
+              <div key={post.id} className="card fade-up">
+
+                {/* Post Header */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 11 }}>
+                  <div
+                    onClick={() => !isMyPost && router.push(`/user/${post.pets?.user_id}`)}
                     style={{
-                      flex: 1, padding: '8px 4px', border: 'none', background: 'transparent',
-                      borderRadius: 9, cursor: 'pointer', fontFamily: 'Nunito, sans-serif',
-                      fontSize: '0.8rem', fontWeight: 700,
-                      color: btn.active ? '#FF6B9D' : '#6B7280', transition: 'background 0.2s, color 0.2s'
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#F3F0FF'; e.currentTarget.style.color = '#6C4BF6' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = btn.active ? '#FF6B9D' : '#6B7280' }}
-                  >{btn.label}</button>
-                ))}
+                      width: 44, height: 44, borderRadius: '50%', background: '#FFE8F0',
+                      border: '2px solid #FF6B35', display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', fontSize: '1.4rem', flexShrink: 0,
+                      overflow: 'hidden', cursor: isMyPost ? 'default' : 'pointer'
+                    }}>
+                    {post.pets?.avatar_url
+                      ? <img src={post.pets.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : post.pets?.emoji || '🐾'}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div
+                      onClick={() => !isMyPost && router.push(`/user/${post.pets?.user_id}`)}
+                      style={{
+                        fontFamily: "'Baloo 2', cursive", fontWeight: 700, fontSize: '0.95rem',
+                        cursor: isMyPost ? 'default' : 'pointer',
+                        color: isMyPost ? '#1E1347' : '#6C4BF6'
+                      }}>
+                      {post.pets?.pet_name || 'A Pet'}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#6B7280' }}>
+                      Managed by {post.pets?.owner_name} · {timeAgo(post.created_at)}
+                      {post.edited && <span style={{ marginLeft: 4, color: '#9CA3AF' }}>(edited)</span>}
+                    </div>
+                  </div>
+
+                  {/* 3-dot menu — only for own posts */}
+                  <div ref={openMenu === post.id ? menuRef : null} style={{ position: 'relative' }}>
+                    <span
+                      onClick={() => setOpenMenu(openMenu === post.id ? null : post.id)}
+                      style={{ color: '#6B7280', fontSize: '1.2rem', cursor: 'pointer', padding: '4px 8px', borderRadius: 8, userSelect: 'none' }}>
+                      ···
+                    </span>
+                    {openMenu === post.id && (
+                      <div style={{
+                        position: 'absolute', top: 28, right: 0, background: '#fff',
+                        borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.14)',
+                        border: '1px solid #EDE8FF', zIndex: 100, minWidth: 160, overflow: 'hidden'
+                      }}>
+                        {isMyPost ? (
+                          <>
+                            <div onClick={() => { setEditingPost(post.id); setEditText(post.content); setOpenMenu(null) }}
+                              style={{ padding: '10px 16px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}
+                              onMouseEnter={e => e.currentTarget.style.background = '#F3F0FF'}
+                              onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                              ✏️ Edit Post
+                            </div>
+                            <div onClick={() => handleDeletePost(post)}
+                              style={{ padding: '10px 16px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, color: '#FF4757', display: 'flex', alignItems: 'center', gap: 8 }}
+                              onMouseEnter={e => e.currentTarget.style.background = '#FFF0F0'}
+                              onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                              🗑️ Delete Post
+                            </div>
+                            <div onClick={() => handleShare(post)}
+                              style={{ padding: '10px 16px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}
+                              onMouseEnter={e => e.currentTarget.style.background = '#F3F0FF'}
+                              onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                              🔗 Share Post
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div onClick={() => handleHidePost(post)}
+                              style={{ padding: '10px 16px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}
+                              onMouseEnter={e => e.currentTarget.style.background = '#F3F0FF'}
+                              onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                              🙈 Hide Post
+                            </div>
+                            <div onClick={() => handleShare(post)}
+                              style={{ padding: '10px 16px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}
+                              onMouseEnter={e => e.currentTarget.style.background = '#F3F0FF'}
+                              onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                              🔗 Share Post
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Edit Mode */}
+                {editingPost === post.id ? (
+                  <div style={{ marginBottom: 10 }}>
+                    <textarea
+                      value={editText}
+                      onChange={e => setEditText(e.target.value)}
+                      style={{
+                        width: '100%', background: '#F3F0FF', border: 'none', borderRadius: 12,
+                        padding: '10px 14px', fontFamily: 'Nunito, sans-serif', fontSize: '0.9rem',
+                        color: '#1E1347', outline: 'none', resize: 'none', minHeight: 70, boxSizing: 'border-box'
+                      }}
+                    />
+                    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                      <button onClick={() => handleEditPost(post)} className="btn-primary"
+                        style={{ padding: '6px 16px', fontSize: '0.82rem', borderRadius: 8 }}>
+                        Save ✓
+                      </button>
+                      <button onClick={() => { setEditingPost(null); setEditText('') }} className="btn-secondary"
+                        style={{ padding: '6px 16px', fontSize: '0.82rem', borderRadius: 8 }}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  post.content && (
+                    <p style={{ lineHeight: 1.65, fontSize: '0.9rem', marginBottom: 10 }}>{post.content}</p>
+                  )
+                )}
+
+                {/* Post Image — fixed size + clickable */}
+                {post.image_url && (
+  <div
+    onClick={() => setLightboxImg(post.image_url)}
+    style={{
+      marginBottom: 10, borderRadius: 14, overflow: 'hidden',
+      cursor: 'zoom-in', background: '#F3F0FF',
+      maxHeight: 500, display: 'flex',
+      alignItems: 'center', justifyContent: 'center'
+    }}>
+    <img
+      src={post.image_url}
+      alt="post"
+      style={{
+        width: '100%',
+        height: 'auto',
+        maxHeight: 500,
+        objectFit: 'contain',
+        display: 'block',
+        borderRadius: 14,
+        transition: 'transform 0.3s'
+      }}
+      onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.01)'}
+      onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+    />
+  </div>
+)}
+
+                {/* Stats */}
+                <div style={{ fontSize: '0.78rem', color: '#6B7280', display: 'flex', justifyContent: 'space-between', marginBottom: 7 }}>
+                  <span>❤️ {post.likes || 0} paws</span>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <span style={{ cursor: 'pointer' }} onClick={() => toggleComments(post.id)}>
+                      💬 {post.comments_count || 0} comments
+                    </span>
+                    <span>🔗 {post.shares_count || 0} shares</span>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div style={{ display: 'flex', gap: 3, paddingTop: 8, borderTop: '1px solid #EDE8FF' }}>
+                  {[
+                    { label: post.liked_by_me ? '❤️ Pawed' : '🐾 Paw it', action: () => toggleLike(post), active: post.liked_by_me },
+                    { label: '💬 Comment', action: () => toggleComments(post.id), active: comments !== undefined },
+                    { label: '🔗 Share', action: () => handleShare(post), active: false },
+                  ].map(btn => (
+                    <button key={btn.label} onClick={btn.action}
+                      style={{
+                        flex: 1, padding: '8px 4px', border: 'none', background: btn.active ? '#F3F0FF' : 'transparent',
+                        borderRadius: 9, cursor: 'pointer', fontFamily: 'Nunito, sans-serif',
+                        fontSize: '0.8rem', fontWeight: 700,
+                        color: btn.active ? '#6C4BF6' : '#6B7280', transition: 'background 0.2s, color 0.2s'
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#F3F0FF'; e.currentTarget.style.color = '#6C4BF6' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = btn.active ? '#F3F0FF' : 'transparent'; e.currentTarget.style.color = btn.active ? '#6C4BF6' : '#6B7280' }}
+                    >{btn.label}</button>
+                  ))}
+                </div>
+
+                {/* Comments Section */}
+                {comments !== undefined && (
+                  <div style={{ marginTop: 12, borderTop: '1px solid #F3F0FF', paddingTop: 12 }}>
+
+                    {/* Comment Input */}
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'flex-start' }}>
+                      <div style={{
+                        width: 32, height: 32, borderRadius: '50%', background: '#FFE8F0',
+                        border: '2px solid #FF6B35', display: 'flex', alignItems: 'center',
+                        justifyContent: 'center', fontSize: '1rem', overflow: 'hidden', flexShrink: 0
+                      }}>
+                        {pet?.avatar_url
+                          ? <img src={pet.avatar_url} alt="me" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          : pet?.emoji || '🐾'}
+                      </div>
+                      <div style={{ flex: 1, display: 'flex', gap: 6 }}>
+                        <input
+                          value={commentTexts[post.id] || ''}
+                          onChange={e => setCommentTexts(prev => ({ ...prev, [post.id]: e.target.value }))}
+                          onKeyDown={e => { if (e.key === 'Enter') handleComment(post.id) }}
+                          placeholder="Write a comment..."
+                          style={{
+                            flex: 1, background: '#F3F0FF', border: 'none', borderRadius: 20,
+                            padding: '8px 14px', fontFamily: 'Nunito, sans-serif', fontSize: '0.82rem',
+                            color: '#1E1347', outline: 'none'
+                          }}
+                        />
+                        <button
+                          onClick={() => handleComment(post.id)}
+                          disabled={!commentTexts[post.id]?.trim()}
+                          style={{
+                            background: 'linear-gradient(135deg, #FF6B35, #6C4BF6)',
+                            border: 'none', borderRadius: 20, padding: '6px 14px',
+                            color: '#fff', fontFamily: 'Nunito, sans-serif',
+                            fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer',
+                            opacity: !commentTexts[post.id]?.trim() ? 0.5 : 1
+                          }}>
+                          Send
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Comments List */}
+                    {comments.length === 0 ? (
+                      <p style={{ fontSize: '0.8rem', color: '#9CA3AF', textAlign: 'center', padding: '8px 0' }}>
+                        No comments yet. Be the first! 🐾
+                      </p>
+                    ) : (
+                      comments.map(comment => (
+                        <div key={comment.id} style={{ marginBottom: 10 }}>
+                          {/* Comment */}
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                            <div
+                              onClick={() => comment.pets?.user_id !== user.id && router.push(`/user/${comment.pets?.user_id}`)}
+                              style={{
+                                width: 30, height: 30, borderRadius: '50%', background: '#F3F0FF',
+                                border: '1.5px solid #EDE8FF', display: 'flex', alignItems: 'center',
+                                justifyContent: 'center', fontSize: '0.9rem', overflow: 'hidden',
+                                flexShrink: 0, cursor: comment.pets?.user_id !== user.id ? 'pointer' : 'default'
+                              }}>
+                              {comment.pets?.avatar_url
+                                ? <img src={comment.pets.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                : comment.pets?.emoji || '🐾'}
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ background: '#F9F5FF', borderRadius: '0 14px 14px 14px', padding: '8px 12px' }}>
+                                <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 700, fontSize: '0.8rem', color: '#1E1347', marginBottom: 2 }}>
+                                  {comment.pets?.pet_name || 'A Pet'}
+                                </div>
+                                <p style={{ fontSize: '0.83rem', color: '#374151', margin: 0, lineHeight: 1.5 }}>
+                                  {comment.content}
+                                </p>
+                              </div>
+                              <div style={{ display: 'flex', gap: 12, marginTop: 4, paddingLeft: 4 }}>
+                                <span style={{ fontSize: '0.72rem', color: '#9CA3AF' }}>{timeAgo(comment.created_at)}</span>
+                                <button
+                                  onClick={() => handleLikeComment(comment, post.id)}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.72rem', color: comment.likedByMe ? '#FF6B9D' : '#6B7280', fontWeight: 700, padding: 0 }}>
+                                  {comment.likedByMe ? '❤️' : '🤍'} {comment.likes > 0 ? comment.likes : ''} Like
+                                </button>
+                                <button
+                                  onClick={() => setReplyTo(prev => ({ ...prev, [post.id]: prev[post.id] === comment.id ? null : comment.id }))}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.72rem', color: '#6B7280', fontWeight: 700, padding: 0 }}>
+                                  💬 Reply
+                                </button>
+                                {comment.user_id === user.id && (
+                                  <button
+                                    onClick={() => handleDeleteComment(comment, post.id)}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.72rem', color: '#FF4757', fontWeight: 700, padding: 0 }}>
+                                    🗑️ Delete
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Reply Input */}
+                              {replyTo[post.id] === comment.id && (
+                                <div style={{ display: 'flex', gap: 6, marginTop: 8, paddingLeft: 4 }}>
+                                  <input
+                                    value={commentTexts[comment.id] || ''}
+                                    onChange={e => setCommentTexts(prev => ({ ...prev, [comment.id]: e.target.value }))}
+                                    onKeyDown={e => { if (e.key === 'Enter') handleComment(post.id, comment.id) }}
+                                    placeholder={`Reply to ${comment.pets?.pet_name}...`}
+                                    style={{
+                                      flex: 1, background: '#F3F0FF', border: 'none', borderRadius: 20,
+                                      padding: '6px 12px', fontFamily: 'Nunito, sans-serif',
+                                      fontSize: '0.78rem', color: '#1E1347', outline: 'none'
+                                    }}
+                                  />
+                                  <button
+                                    onClick={() => handleComment(post.id, comment.id)}
+                                    disabled={!commentTexts[comment.id]?.trim()}
+                                    style={{
+                                      background: 'linear-gradient(135deg, #FF6B35, #6C4BF6)',
+                                      border: 'none', borderRadius: 20, padding: '5px 12px',
+                                      color: '#fff', fontFamily: 'Nunito, sans-serif',
+                                      fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer',
+                                      opacity: !commentTexts[comment.id]?.trim() ? 0.5 : 1
+                                    }}>
+                                    Reply
+                                  </button>
+                                </div>
+                              )}
+
+                              {/* Replies */}
+                              {comment.replies?.length > 0 && (
+                                <div style={{ marginTop: 8, paddingLeft: 12, borderLeft: '2px solid #EDE8FF' }}>
+                                  {comment.replies.map(reply => (
+                                    <div key={reply.id} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'flex-start' }}>
+                                      <div style={{
+                                        width: 24, height: 24, borderRadius: '50%', background: '#F3F0FF',
+                                        border: '1px solid #EDE8FF', display: 'flex', alignItems: 'center',
+                                        justifyContent: 'center', fontSize: '0.75rem', overflow: 'hidden', flexShrink: 0
+                                      }}>
+                                        {reply.pets?.avatar_url
+                                          ? <img src={reply.pets.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                          : reply.pets?.emoji || '🐾'}
+                                      </div>
+                                      <div style={{ background: '#F3F0FF', borderRadius: '0 12px 12px 12px', padding: '6px 10px', flex: 1 }}>
+                                        <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 700, fontSize: '0.75rem', color: '#1E1347' }}>
+                                          {reply.pets?.pet_name}
+                                        </div>
+                                        <p style={{ fontSize: '0.78rem', color: '#374151', margin: 0 }}>{reply.content}</p>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         {/* RIGHT SIDEBAR */}
@@ -380,17 +877,24 @@ export default function Feed() {
             )}
             {suggestions.map(s => (
               <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 0', borderBottom: '1px solid #F9F5FF' }}>
-                <div style={{
-                  width: 40, height: 40, borderRadius: '50%', background: '#F3F0FF',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '1.25rem', border: '2px solid #EDE8FF', overflow: 'hidden'
-                }}>
+                <div
+                  onClick={() => s.user_id !== user.id && router.push(`/user/${s.user_id}`)}
+                  style={{
+                    width: 40, height: 40, borderRadius: '50%', background: '#F3F0FF',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '1.25rem', border: '2px solid #EDE8FF', overflow: 'hidden',
+                    cursor: 'pointer'
+                  }}>
                   {s.avatar_url
                     ? <img src={s.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     : s.emoji}
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: '0.86rem' }}>{s.pet_name}</div>
+                  <div
+                    onClick={() => s.user_id !== user.id && router.push(`/user/${s.user_id}`)}
+                    style={{ fontWeight: 700, fontSize: '0.86rem', cursor: 'pointer', color: '#6C4BF6' }}>
+                    {s.pet_name}
+                  </div>
                   <div style={{ fontSize: '0.7rem', color: '#6B7280' }}>{s.pet_breed}</div>
                 </div>
                 <button
@@ -400,8 +904,9 @@ export default function Feed() {
                   style={{
                     padding: '4px 10px', fontSize: '0.72rem', borderRadius: 8,
                     cursor: friendStatuses[s.user_id] ? 'default' : 'pointer',
-                    fontFamily: 'Nunito, sans-serif', fontWeight: 700,
-                    border: 'none', ...getFriendButtonStyle(s.user_id)
+                    fontFamily: 'Nunito, sans-serif', fontWeight: 700, border: 'none',
+                    background: friendStatuses[s.user_id] ? '#F3F0FF' : '',
+                    color: friendStatuses[s.user_id] ? '#6C4BF6' : ''
                   }}>
                   {getFriendButtonLabel(s.user_id)}
                 </button>
