@@ -40,40 +40,66 @@ export default function UserProfile() {
     setProfilePet(profilePetData)
 
     // Get posts
-    const { data: postsData } = await supabase
-      .from('posts')
-      .select('*, pets(pet_name, emoji, avatar_url, owner_name, user_id)')
-      .eq('hidden', false)
-      .eq('pets.user_id', id)
-      .order('created_at', { ascending: false })
+    // Get the pet profile for this user first
+const { data: targetPet } = await supabase
+  .from('pets')
+  .select('id')
+  .eq('user_id', id)
+  .single()
 
-    // Filter only posts belonging to this user
-    const filtered = (postsData || []).filter(p => p.pets?.user_id === id)
-    setPosts(filtered)
+// Get posts using pet_id
+if (targetPet) {
+  const { data: postsData } = await supabase
+    .from('posts')
+    .select('*, pets(pet_name, emoji, avatar_url, owner_name, user_id)')
+    .eq('pet_id', targetPet.id)
+    .eq('hidden', false)
+    .order('created_at', { ascending: false })
 
-    // Get images from posts
-    const imgs = filtered.filter(p => p.image_url).map(p => p.image_url)
-    setImages(imgs)
+  setPosts(postsData || [])
 
-    // Get friends of this profile
-    const { data: sentFriends } = await supabase
-      .from('friend_requests').select('*')
-      .eq('sender_id', id).eq('status', 'accepted')
-    const { data: receivedFriends } = await supabase
-      .from('friend_requests').select('*')
-      .eq('receiver_id', id).eq('status', 'accepted')
+  // Get images from posts
+  const imgs = (postsData || []).filter(p => p.image_url).map(p => p.image_url)
+  setImages(imgs)
+} else {
+  setPosts([])
+  setImages([])
+}
 
-    const friendList = []
-    for (const req of (sentFriends || [])) {
-      const { data: p } = await supabase.from('pets').select('*').eq('user_id', req.receiver_id).single()
-      if (p) friendList.push(p)
-    }
-    for (const req of (receivedFriends || [])) {
-      const { data: p } = await supabase.from('pets').select('*').eq('user_id', req.sender_id).single()
-      if (p) friendList.push(p)
-    }
-    setFriends(friendList)
+// Get friends of this profile — fixed query
+const { data: sentFriends } = await supabase
+  .from('friend_requests')
+  .select('receiver_id')
+  .eq('sender_id', id)
+  .eq('status', 'accepted')
 
+const { data: receivedFriends } = await supabase
+  .from('friend_requests')
+  .select('sender_id')
+  .eq('receiver_id', id)
+  .eq('status', 'accepted')
+
+const friendList = []
+
+for (const req of (sentFriends || [])) {
+  const { data: friendPet } = await supabase
+    .from('pets')
+    .select('*')
+    .eq('user_id', req.receiver_id)
+    .single()
+  if (friendPet) friendList.push(friendPet)
+}
+
+for (const req of (receivedFriends || [])) {
+  const { data: friendPet } = await supabase
+    .from('pets')
+    .select('*')
+    .eq('user_id', req.sender_id)
+    .single()
+  if (friendPet) friendList.push(friendPet)
+}
+
+setFriends(friendList)
     // Check friend status with this profile
     const { data: sentReq } = await supabase
       .from('friend_requests')

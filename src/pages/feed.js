@@ -73,7 +73,33 @@ export default function Feed() {
     ;(sentRequests || []).forEach(r => { statuses[r.receiver_id] = r.status })
     ;(receivedRequests || []).forEach(r => { statuses[r.sender_id] = r.status })
     setFriendStatuses(statuses)
-
+// Real-time listener for post likes/updates
+const postsChannel = supabase
+  .channel(`feed-posts-${session.user.id}`)
+  .on('postgres_changes', {
+    event: 'UPDATE',
+    schema: 'public',
+    table: 'posts',
+  }, (payload) => {
+    const updated = payload.new
+    setPosts(prev => prev.map(p =>
+      p.id === updated.id
+        ? { ...p, likes: updated.likes, comments_count: updated.comments_count, shares_count: updated.shares_count }
+        : p
+    ))
+  })
+  .on('postgres_changes', {
+    event: 'INSERT',
+    schema: 'public',
+    table: 'posts',
+  }, (payload) => {
+    // New post from someone else appears in real-time
+    const newPost = payload.new
+    if (newPost.pet_id !== petData?.id) {
+      fetchPosts()
+    }
+  })
+  .subscribe()
     setLoading(false)
   }
 

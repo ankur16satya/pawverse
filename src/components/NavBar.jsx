@@ -2,35 +2,46 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 
-export default function NavBar({ user, pet, unreadMessages }) {
+// Sound player — defined outside component so it never re-initializes
+const sounds = {}
+const playSound = (type) => {
+  try {
+    const src = type === 'message' ? '/message.mp3' : '/notification.mp3'
+    if (!sounds[type]) sounds[type] = new Audio(src)
+    sounds[type].currentTime = 0
+    sounds[type].volume = 0.6
+    sounds[type].play().catch(() => {})
+  } catch (e) {}
+}
+
+export default function NavBar({ user, pet }) {
   const router = useRouter()
   const path = router.pathname
   const [notifications, setNotifications] = useState([])
   const [showNotifs, setShowNotifs] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
   const [pendingFriendCount, setPendingFriendCount] = useState(0)
-  const [unreadMsgCount, setUnreadMsgCount] = useState(unreadMessages || 0)
+  const [unreadMsgCount, setUnreadMsgCount] = useState(0)
   const notifRef = useRef(null)
   const channelRef = useRef(null)
-
-  // Sync prop changes (from chat.js)
-  useEffect(() => {
-    if (unreadMessages !== undefined) setUnreadMsgCount(unreadMessages)
-  }, [unreadMessages])
+  const initializedRef = useRef(false)
 
   useEffect(() => {
-    if (!user) return
-    fetchNotifications()
-    fetchPendingFriendRequests()
-    fetchUnreadMessages()
-    setupRealtimeListeners()
+    if (!user || initializedRef.current) return
+    initializedRef.current = true
+
+    fetchAll()
+    setupRealtime()
 
     return () => {
-      if (channelRef.current) supabase.removeChannel(channelRef.current)
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current)
+        channelRef.current = null
+      }
+      initializedRef.current = false
     }
-  }, [user])
+  }, [user?.id])
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (notifRef.current && !notifRef.current.contains(e.target)) {
@@ -41,81 +52,12 @@ export default function NavBar({ user, pet, unreadMessages }) {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const setupRealtimeListeners = () => {
-    if (channelRef.current) supabase.removeChannel(channelRef.current)
-
-    const channel = supabase
-      .channel(`navbar-${user.id}`)
-      // New notifications
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'notifications',
-        filter: `user_id=eq.${user.id}`
-      }, (payload) => {
-        setNotifications(prev => [payload.new, ...prev])
-        setUnreadCount(prev => prev + 1)
-      })
-      // New friend requests
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'friend_requests',
-        filter: `receiver_id=eq.${user.id}`
-      }, (payload) => {
-        if (payload.new.status === 'pending') {
-          setPendingFriendCount(prev => prev + 1)
-        }
-      })
-      // New messages — this is the key fix
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages',
-      }, async (payload) => {
-        const newMsg = payload.new
-
-        // Ignore messages I sent
-        if (newMsg.sender_id === user.id) return
-
-        // Check if message is in my conversation
-        const { data: conv } = await supabase
-          .from('conversations')
-          .select('*')
-          .eq('id', newMsg.conversation_id)
-          .or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`)
-          .single()
-
-        if (!conv) return
-
-        // Only count as unread if not already read
-        if (!newMsg.is_read) {
-          setUnreadMsgCount(prev => prev + 1)
-
-          // Play sound
-          try {
-            const audio = new Audio('/message.mp3')
-            audio.volume = 0.5
-            audio.play().catch(() => {})
-          } catch (e) {}
-        }
-      })
-      // Message read — decrease count
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'messages',
-      }, (payload) => {
-        const updated = payload.new
-        const old = payload.old
-        // If message was marked as read and was unread before
-        if (!old.is_read && updated.is_read && updated.sender_id !== user.id) {
-          setUnreadMsgCount(prev => Math.max(0, prev - 1))
-        }
-      })
-      .subscribe()
-
-    channelRef.current = channel
+  const fetchAll = async () => {
+    await Promise.all([
+      fetchNotifications(),
+      fetchPendingFriendRequests(),
+      fetchUnreadMessages(),
+    ])
   }
 
   const fetchNotifications = async () => {
@@ -124,7 +66,7 @@ export default function NavBar({ user, pet, unreadMessages }) {
       .select('*')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
-      .limit(15)
+      .limit(20)
     setNotifications(data || [])
     setUnreadCount((data || []).filter(n => !n.is_read).length)
   }
@@ -139,7 +81,6 @@ export default function NavBar({ user, pet, unreadMessages }) {
   }
 
   const fetchUnreadMessages = async () => {
-    // Count all unread messages across all my conversations
     const { data: convs } = await supabase
       .from('conversations')
       .select('id')
@@ -158,6 +99,114 @@ export default function NavBar({ user, pet, unreadMessages }) {
       total += count || 0
     }
     setUnreadMsgCount(total)
+  }
+
+  const setupRealtime = () => {
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current)
+    }
+
+    const channel = supabase
+      .channel(`navbar-realtime-${user.id}-${Date.now()}`)
+
+      // ── NEW NOTIFICATION received ──
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notifications',
+        filter: `user_id=eq.${user.id}`,
+      }, (payload) => {
+        const newNotif = payload.new
+        // Play sound when notification is received
+        if (newNotif.type === 'message') {
+          playSound('message')
+        } else {
+          playSound('notification')
+        }
+        setNotifications(prev => [newNotif, ...prev])
+        setUnreadCount(prev => prev + 1)
+      })
+
+      // ── NEW FRIEND REQUEST ──
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'friend_requests',
+        filter: `receiver_id=eq.${user.id}`,
+      }, (payload) => {
+        if (payload.new.status === 'pending') {
+          setPendingFriendCount(prev => prev + 1)
+          playSound('notification')
+        }
+      })
+
+      // ── FRIEND REQUEST ACCEPTED ──
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'friend_requests',
+        filter: `sender_id=eq.${user.id}`,
+      }, (payload) => {
+        if (payload.new.status === 'accepted') {
+          playSound('notification')
+        }
+      })
+
+      // ── NEW MESSAGE received ──
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+      }, async (payload) => {
+        const newMsg = payload.new
+        if (newMsg.sender_id === user.id) return
+
+        // Check if this message is in my conversation
+        const { data: conv } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('id', newMsg.conversation_id)
+          .or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`)
+          .single()
+
+        if (!conv) return
+
+        if (!newMsg.is_read) {
+          setUnreadMsgCount(prev => prev + 1)
+          playSound('message')
+        }
+      })
+
+      // ── MESSAGE READ — decrease count ──
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'messages',
+      }, (payload) => {
+        if (
+          !payload.old.is_read &&
+          payload.new.is_read &&
+          payload.new.sender_id !== user.id
+        ) {
+          setUnreadMsgCount(prev => Math.max(0, prev - 1))
+        }
+      })
+
+      // ── POST LIKES updated in real-time ──
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'posts',
+      }, (payload) => {
+        // This triggers feed.js listener if on feed page
+        // NavBar just needs to know about it for notification sound
+      })
+
+      .subscribe((status) => {
+        console.log('NavBar realtime status:', status)
+      })
+
+    channelRef.current = channel
   }
 
   const handleBellClick = async () => {
@@ -184,13 +233,12 @@ export default function NavBar({ user, pet, unreadMessages }) {
   }
 
   const notifIcon = (type) => {
-    if (type === 'like') return '❤️'
-    if (type === 'comment') return '💬'
-    if (type === 'follow') return '🐾'
-    if (type === 'friend_request') return '👫'
-    if (type === 'friend_accepted') return '✅'
-    if (type === 'message') return '💬'
-    return '🔔'
+    const icons = {
+      like: '❤️', comment: '💬', follow: '🐾',
+      friend_request: '👫', friend_accepted: '✅',
+      message: '💬', post: '📸'
+    }
+    return icons[type] || '🔔'
   }
 
   const handleLogout = async () => {
@@ -250,29 +298,27 @@ export default function NavBar({ user, pet, unreadMessages }) {
             }}>
             {n.icon}
 
-            {/* 💬 Unread messages badge */}
+            {/* Chat unread badge */}
             {n.href === '/chat' && unreadMsgCount > 0 && (
               <div style={{
                 position: 'absolute', top: 4, right: 4,
                 minWidth: 16, height: 16, background: '#FF4757',
                 borderRadius: '50%', border: '2px solid #fff',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '0.6rem', fontWeight: 800, color: '#fff',
-                fontFamily: 'Nunito, sans-serif'
+                fontSize: '0.6rem', fontWeight: 800, color: '#fff'
               }}>
                 {unreadMsgCount > 9 ? '9+' : unreadMsgCount}
               </div>
             )}
 
-            {/* 👫 Pending friend requests badge */}
+            {/* Friends pending badge */}
             {n.href === '/friends' && pendingFriendCount > 0 && (
               <div style={{
                 position: 'absolute', top: 4, right: 4,
                 minWidth: 16, height: 16, background: '#FF4757',
                 borderRadius: '50%', border: '2px solid #fff',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '0.6rem', fontWeight: 800, color: '#fff',
-                fontFamily: 'Nunito, sans-serif'
+                fontSize: '0.6rem', fontWeight: 800, color: '#fff'
               }}>
                 {pendingFriendCount > 9 ? '9+' : pendingFriendCount}
               </div>
@@ -321,15 +367,14 @@ export default function NavBar({ user, pet, unreadMessages }) {
                 minWidth: 16, height: 16, background: '#FF4757',
                 borderRadius: '50%', border: '2px solid #fff',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '0.6rem', fontWeight: 800, color: '#fff',
-                fontFamily: 'Nunito, sans-serif'
+                fontSize: '0.6rem', fontWeight: 800, color: '#fff'
               }}>
                 {unreadCount > 9 ? '9+' : unreadCount}
               </div>
             )}
           </div>
 
-          {/* Notifications Dropdown */}
+          {/* Dropdown */}
           {showNotifs && (
             <div style={{
               position: 'absolute', top: 42, right: 0, width: 320,
@@ -345,10 +390,13 @@ export default function NavBar({ user, pet, unreadMessages }) {
                   🔔 Notifications
                 </span>
                 {unreadCount === 0 && notifications.length > 0 && (
-                  <span style={{ fontSize: '0.72rem', color: '#22C55E', fontWeight: 700 }}>✓ All caught up!</span>
+                  <span style={{ fontSize: '0.72rem', color: '#22C55E', fontWeight: 700 }}>
+                    ✓ All caught up!
+                  </span>
                 )}
               </div>
-              <div style={{ maxHeight: 340, overflowY: 'auto' }}>
+
+              <div style={{ maxHeight: 360, overflowY: 'auto' }}>
                 {notifications.length === 0 ? (
                   <div style={{ padding: 32, textAlign: 'center' }}>
                     <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>🐾</div>
@@ -374,8 +422,13 @@ export default function NavBar({ user, pet, unreadMessages }) {
                         cursor: ['friend_request', 'message'].includes(n.type) ? 'pointer' : 'default',
                         transition: 'background 0.2s'
                       }}
-                      onMouseEnter={e => { if (['friend_request','message'].includes(n.type)) e.currentTarget.style.background = '#F3F0FF' }}
-                      onMouseLeave={e => e.currentTarget.style.background = n.is_read ? '#fff' : '#F9F5FF'}
+                      onMouseEnter={e => {
+                        if (['friend_request', 'message'].includes(n.type))
+                          e.currentTarget.style.background = '#F3F0FF'
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.background = n.is_read ? '#fff' : '#F9F5FF'
+                      }}
                     >
                       <div style={{
                         width: 36, height: 36, borderRadius: '50%', background: '#F3F0FF',
@@ -398,7 +451,7 @@ export default function NavBar({ user, pet, unreadMessages }) {
                             Tap to open → Messages
                           </span>
                         )}
-                        <span style={{ fontSize: '0.7rem', color: '#6B7280', display: 'block' }}>
+                        <span style={{ fontSize: '0.7rem', color: '#6B7280', display: 'block', marginTop: 2 }}>
                           {timeAgo(n.created_at)}
                         </span>
                       </div>
@@ -412,6 +465,7 @@ export default function NavBar({ user, pet, unreadMessages }) {
                   ))
                 )}
               </div>
+
               <div
                 onClick={() => { setShowNotifs(false); router.push('/friends') }}
                 style={{
