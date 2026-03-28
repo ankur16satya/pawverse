@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
@@ -12,30 +12,29 @@ export default function Feed() {
   const [posting, setPosting] = useState(false)
   const [loading, setLoading] = useState(true)
   const [suggestions, setSuggestions] = useState([])
+  const [selectedImage, setSelectedImage] = useState(null)
+  const [imagePreview, setImagePreview] = useState(null)
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const fileInputRef = useRef(null)
 
-  useEffect(() => {
-    init()
-  }, [])
+  useEffect(() => { init() }, [])
 
   const init = async () => {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { router.push('/'); return }
     setUser(session.user)
 
-    // Get current pet profile
     const { data: petData } = await supabase
       .from('pets').select('*').eq('user_id', session.user.id).single()
     setPet(petData)
 
-    // Get posts with pet info
     const { data: postsData } = await supabase
       .from('posts')
-      .select('*, pets(pet_name, emoji, pet_breed, owner_name)')
+      .select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url)')
       .order('created_at', { ascending: false })
       .limit(20)
     setPosts(postsData || [])
 
-    // Get other pets as suggestions
     const { data: others } = await supabase
       .from('pets').select('*')
       .neq('user_id', session.user.id).limit(5)
@@ -44,20 +43,65 @@ export default function Feed() {
     setLoading(false)
   }
 
-  const handlePost = async () => {
-    if (!postText.trim() || !pet) return
-    setPosting(true)
-    const { data, error } = await supabase.from('posts').insert({
-      pet_id: pet.id,
-      content: postText,
-    }).select('*, pets(pet_name, emoji, pet_breed, owner_name)').single()
+  const handleImageSelect = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image must be under 5MB')
+      return
+    }
+    setSelectedImage(file)
+    setImagePreview(URL.createObjectURL(file))
+  }
 
-    if (!error && data) {
-      setPosts([data, ...posts])
-      setPostText('')
-      // Award PawCoins for posting
-      await supabase.from('pets').update({ paw_coins: (pet.paw_coins || 0) + 10 }).eq('id', pet.id)
-      setPet(p => ({ ...p, paw_coins: (p.paw_coins || 0) + 10 }))
+  const removeImage = () => {
+    setSelectedImage(null)
+    setImagePreview(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const uploadImage = async (file, userId) => {
+    const ext = file.name.split('.').pop()
+    const fileName = `${userId}/${Date.now()}.${ext}`
+    const { error } = await supabase.storage
+      .from('post-images')
+      .upload(fileName, file, { cacheControl: '3600', upsert: false })
+    if (error) throw error
+    const { data: { publicUrl } } = supabase.storage
+      .from('post-images')
+      .getPublicUrl(fileName)
+    return publicUrl
+  }
+
+  const handlePost = async () => {
+    if (!postText.trim() && !selectedImage) return
+    if (!pet) return
+    setPosting(true)
+    try {
+      let imageUrl = null
+      if (selectedImage) {
+        setUploadingImage(true)
+        imageUrl = await uploadImage(selectedImage, user.id)
+        setUploadingImage(false)
+      }
+
+      const { data, error } = await supabase.from('posts').insert({
+        pet_id: pet.id,
+        content: postText,
+        image_url: imageUrl,
+      }).select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url)').single()
+
+      if (!error && data) {
+        setPosts([data, ...posts])
+        setPostText('')
+        removeImage()
+        await supabase.from('pets')
+          .update({ paw_coins: (pet.paw_coins || 0) + 10 })
+          .eq('id', pet.id)
+        setPet(p => ({ ...p, paw_coins: (p.paw_coins || 0) + 10 }))
+      }
+    } catch (err) {
+      alert('Failed to post. Please try again.')
     }
     setPosting(false)
   }
@@ -65,7 +109,21 @@ export default function Feed() {
   const toggleLike = async (post) => {
     const newLikes = (post.likes || 0) + (post.liked_by_me ? -1 : 1)
     await supabase.from('posts').update({ likes: newLikes }).eq('id', post.id)
-    setPosts(posts.map(p => p.id === post.id ? { ...p, likes: newLikes, liked_by_me: !p.liked_by_me } : p))
+    setPosts(posts.map(p => p.id === post.id
+      ? { ...p, likes: newLikes, liked_by_me: !p.liked_by_me } : p))
+
+    // Send notification to post owner when liked
+    if (!post.liked_by_me && post.pets) {
+      const { data: ownerPet } = await supabase
+        .from('pets').select('user_id').eq('id', post.pet_id).single()
+      if (ownerPet && ownerPet.user_id !== user.id) {
+        await supabase.from('notifications').insert({
+          user_id: ownerPet.user_id,
+          type: 'like',
+          message: `${pet.pet_name} pawed your post! ❤️`,
+        })
+      }
+    }
   }
 
   const timeAgo = (ts) => {
@@ -79,9 +137,7 @@ export default function Feed() {
   }
 
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontSize: '2rem' }}>
-      🐾
-    </div>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontSize: '2rem' }}>🐾</div>
   )
 
   return (
@@ -94,24 +150,24 @@ export default function Feed() {
       }}>
         {/* LEFT SIDEBAR */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, position: 'sticky', top: 70, alignSelf: 'start' }}>
-          {/* My Pet Card */}
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             <div style={{ height: 60, background: 'linear-gradient(135deg, #FF6B35, #6C4BF6)' }} />
             <div style={{ padding: '0 14px 14px', textAlign: 'center' }}>
               <div style={{
                 width: 52, height: 52, borderRadius: '50%', background: '#FFE8F0',
                 border: '3px solid #fff', margin: '-26px auto 6px',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.7rem'
-              }}>{pet?.emoji || '🐾'}</div>
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '1.7rem', overflow: 'hidden'
+              }}>
+                {pet?.avatar_url
+                  ? <img src={pet.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : pet?.emoji || '🐾'}
+              </div>
               <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1rem' }}>{pet?.pet_name}</div>
               <div style={{ color: '#6B7280', fontSize: '0.74rem' }}>{pet?.pet_breed}</div>
               <div style={{ color: '#6B7280', fontSize: '0.72rem' }}>by {pet?.owner_name}</div>
               <div onClick={() => router.push('/coins')}
-                style={{
-                  marginTop: 10, background: 'linear-gradient(135deg, #FFFBE8, #FFE8CC)',
-                  borderRadius: 10, padding: '7px', display: 'flex', alignItems: 'center',
-                  justifyContent: 'center', gap: 6, cursor: 'pointer'
-                }}>
+                style={{ marginTop: 10, background: 'linear-gradient(135deg, #FFFBE8, #FFE8CC)', borderRadius: 10, padding: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer' }}>
                 <span>🪙</span>
                 <span style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, color: '#FF6B35', fontSize: '0.88rem' }}>
                   {pet?.paw_coins || 0} PawCoins
@@ -120,7 +176,6 @@ export default function Feed() {
             </div>
           </div>
 
-          {/* Quick Links */}
           <div className="card" style={{ padding: 12 }}>
             {[
               ['🛍️', 'Marketplace', '/marketplace'],
@@ -130,14 +185,9 @@ export default function Feed() {
               ['🪙', 'PawCoins', '/coins'],
             ].map(([ic, lb, href]) => (
               <div key={href} onClick={() => router.push(href)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 10, padding: '8px 8px',
-                  borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: '0.86rem',
-                  transition: 'background 0.2s'
-                }}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 8px', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: '0.86rem', transition: 'background 0.2s' }}
                 onMouseEnter={e => e.currentTarget.style.background = '#F3F0FF'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-              >
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                 <span style={{ fontSize: '1.1rem' }}>{ic}</span> {lb}
               </div>
             ))}
@@ -146,14 +196,19 @@ export default function Feed() {
 
         {/* FEED */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
           {/* Composer */}
           <div className="card">
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <div style={{
                 width: 40, height: 40, borderRadius: '50%', background: '#FFE8F0',
                 border: '2px solid #FF6B35', display: 'flex', alignItems: 'center',
-                justifyContent: 'center', fontSize: '1.2rem', flexShrink: 0
-              }}>{pet?.emoji || '🐾'}</div>
+                justifyContent: 'center', fontSize: '1.2rem', flexShrink: 0, overflow: 'hidden'
+              }}>
+                {pet?.avatar_url
+                  ? <img src={pet.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : pet?.emoji || '🐾'}
+              </div>
               <textarea
                 value={postText}
                 onChange={e => setPostText(e.target.value)}
@@ -165,9 +220,46 @@ export default function Feed() {
                 }}
               />
             </div>
+
+            {/* Image Preview */}
+            {imagePreview && (
+              <div style={{ position: 'relative', marginTop: 10, borderRadius: 12, overflow: 'hidden', maxHeight: 300 }}>
+                <img src={imagePreview} alt="preview"
+                  style={{ width: '100%', maxHeight: 300, objectFit: 'cover', borderRadius: 12 }} />
+                <button onClick={removeImage}
+                  style={{
+                    position: 'absolute', top: 8, right: 8, width: 28, height: 28,
+                    borderRadius: '50%', background: 'rgba(0,0,0,0.6)', color: '#fff',
+                    border: 'none', cursor: 'pointer', fontSize: '0.85rem',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800
+                  }}>✕</button>
+              </div>
+            )}
+
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
               <div style={{ display: 'flex', gap: 8 }}>
-                {['📸 Photo', '📍 Location', '😊 Feeling'].map(x => (
+                {/* Hidden file input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageSelect}
+                  style={{ display: 'none' }}
+                />
+                {/* Photo button - now functional */}
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    padding: '5px 10px', border: 'none',
+                    background: selectedImage ? '#D4F0D4' : '#F3F0FF',
+                    borderRadius: 8, cursor: 'pointer',
+                    fontFamily: 'Nunito, sans-serif', fontWeight: 700,
+                    fontSize: '0.75rem',
+                    color: selectedImage ? '#22C55E' : '#6C4BF6'
+                  }}>
+                  📸 {selectedImage ? 'Photo Added ✓' : 'Photo'}
+                </button>
+                {['📍 Location', '😊 Feeling'].map(x => (
                   <button key={x} style={{
                     padding: '5px 10px', border: 'none', background: '#F3F0FF', borderRadius: 8,
                     cursor: 'pointer', fontFamily: 'Nunito, sans-serif', fontWeight: 700,
@@ -175,9 +267,12 @@ export default function Feed() {
                   }}>{x}</button>
                 ))}
               </div>
-              <button onClick={handlePost} disabled={posting || !postText.trim()} className="btn-primary"
-                style={{ padding: '7px 18px', fontSize: '0.85rem', opacity: posting || !postText.trim() ? 0.5 : 1 }}>
-                {posting ? 'Posting...' : 'Post 🐾'}
+              <button
+                onClick={handlePost}
+                disabled={posting || (!postText.trim() && !selectedImage)}
+                className="btn-primary"
+                style={{ padding: '7px 18px', fontSize: '0.85rem', opacity: posting || (!postText.trim() && !selectedImage) ? 0.5 : 1 }}>
+                {uploadingImage ? '📤 Uploading...' : posting ? 'Posting...' : 'Post 🐾'}
               </button>
             </div>
           </div>
@@ -193,13 +288,16 @@ export default function Feed() {
 
           {posts.map(post => (
             <div key={post.id} className="card fade-up">
-              {/* Post Header */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 11 }}>
                 <div style={{
                   width: 44, height: 44, borderRadius: '50%', background: '#FFE8F0',
                   border: '2px solid #FF6B35', display: 'flex', alignItems: 'center',
-                  justifyContent: 'center', fontSize: '1.4rem', flexShrink: 0
-                }}>{post.pets?.emoji || '🐾'}</div>
+                  justifyContent: 'center', fontSize: '1.4rem', flexShrink: 0, overflow: 'hidden'
+                }}>
+                  {post.pets?.avatar_url
+                    ? <img src={post.pets.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : post.pets?.emoji || '🐾'}
+                </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 700, fontSize: '0.95rem' }}>
                     {post.pets?.pet_name || 'A Pet'}
@@ -211,16 +309,26 @@ export default function Feed() {
                 <span style={{ color: '#6B7280', fontSize: '1.1rem', cursor: 'pointer' }}>···</span>
               </div>
 
-              {/* Content */}
-              <p style={{ lineHeight: 1.65, fontSize: '0.9rem', marginBottom: 10 }}>{post.content}</p>
+              {post.content && (
+                <p style={{ lineHeight: 1.65, fontSize: '0.9rem', marginBottom: 10 }}>{post.content}</p>
+              )}
 
-              {/* Stats */}
+              {/* Post Image */}
+              {post.image_url && (
+                <div style={{ marginBottom: 10, borderRadius: 12, overflow: 'hidden' }}>
+                  <img
+                    src={post.image_url}
+                    alt="post"
+                    style={{ width: '100%', maxHeight: 400, objectFit: 'cover', borderRadius: 12, display: 'block' }}
+                  />
+                </div>
+              )}
+
               <div style={{ fontSize: '0.78rem', color: '#6B7280', display: 'flex', justifyContent: 'space-between', marginBottom: 7 }}>
                 <span>❤️ {post.likes || 0} paws</span>
                 <span>{post.comments_count || 0} comments</span>
               </div>
 
-              {/* Actions */}
               <div style={{ display: 'flex', gap: 3, paddingTop: 8, borderTop: '1px solid #EDE8FF' }}>
                 {[
                   { label: post.liked_by_me ? '❤️ Pawed' : '🐾 Paw it', action: () => toggleLike(post), active: post.liked_by_me },
@@ -257,9 +365,13 @@ export default function Feed() {
               <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 0', borderBottom: '1px solid #F9F5FF' }}>
                 <div style={{
                   width: 40, height: 40, borderRadius: '50%', background: '#F3F0FF',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem',
-                  border: '2px solid #EDE8FF'
-                }}>{s.emoji}</div>
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '1.25rem', border: '2px solid #EDE8FF', overflow: 'hidden'
+                }}>
+                  {s.avatar_url
+                    ? <img src={s.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : s.emoji}
+                </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 700, fontSize: '0.86rem' }}>{s.pet_name}</div>
                   <div style={{ fontSize: '0.7rem', color: '#6B7280' }}>{s.pet_breed}</div>
@@ -275,7 +387,7 @@ export default function Feed() {
               <span key={t} style={{
                 display: 'inline-block', padding: '3px 9px', borderRadius: 20,
                 fontSize: '0.72rem', fontWeight: 800, margin: 2, cursor: 'pointer',
-                background: ['#FFE8CC','#E8F8E8','#F0EBFF','#FFE8F0','#E8F4FF'][i]
+                background: ['#FFE8CC', '#E8F8E8', '#F0EBFF', '#FFE8F0', '#E8F4FF'][i]
               }}>{t}</span>
             ))}
           </div>

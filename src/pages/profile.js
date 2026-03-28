@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
@@ -13,6 +13,9 @@ export default function Profile() {
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('posts')
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [avatarPreview, setAvatarPreview] = useState(null)
+  const avatarInputRef = useRef(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -25,9 +28,9 @@ export default function Profile() {
       if (existingPet) {
         setPet(existingPet)
         setForm(existingPet)
+        if (existingPet.avatar_url) setAvatarPreview(existingPet.avatar_url)
         setLoading(false)
       } else {
-        // Try to auto-create from localStorage saved during signup
         const pending = localStorage.getItem('pending_pet')
         if (pending) {
           const petData = JSON.parse(pending)
@@ -40,7 +43,7 @@ export default function Profile() {
           }).select().single()
 
           if (!error && newPet) {
-            localStorage.removeItem('pending_pet') // clean up
+            localStorage.removeItem('pending_pet')
             setPet(newPet)
             setForm(newPet)
           }
@@ -48,14 +51,77 @@ export default function Profile() {
         setLoading(false)
       }
 
-      supabase.from('posts').select('*').order('created_at', { ascending: false }).limit(10)
+      supabase.from('posts')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10)
         .then(({ data }) => setPosts(data || []))
     })
   }, [])
 
+  // Handle avatar file selection & upload
+  const handleAvatarChange = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    if (file.size > 3 * 1024 * 1024) {
+      alert('Image must be under 3MB')
+      return
+    }
+
+    // Show instant local preview
+    const localPreview = URL.createObjectURL(file)
+    setAvatarPreview(localPreview)
+    setAvatarUploading(true)
+
+    try {
+      // Delete old avatar if exists
+      if (pet.avatar_url) {
+        const oldPath = pet.avatar_url.split('/avatars/')[1]
+        if (oldPath) await supabase.storage.from('avatars').remove([oldPath])
+      }
+
+      // Upload new avatar
+      const ext = file.name.split('.').pop()
+      const fileName = `${user.id}/${Date.now()}.${ext}`
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, file, { cacheControl: '3600', upsert: true })
+
+      if (uploadError) throw uploadError
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(fileName)
+
+      // Save to pets table
+      const { error: updateError } = await supabase
+        .from('pets')
+        .update({ avatar_url: publicUrl })
+        .eq('id', pet.id)
+
+      if (updateError) throw updateError
+
+      setPet(p => ({ ...p, avatar_url: publicUrl }))
+      setAvatarPreview(publicUrl)
+
+    } catch (err) {
+      alert('Failed to upload image. Please try again.')
+      setAvatarPreview(pet.avatar_url || null)
+    } finally {
+      setAvatarUploading(false)
+    }
+  }
+
   const saveProfile = async () => {
     setSaving(true)
-    await supabase.from('pets').update({ bio: form.bio, location: form.location, pet_breed: form.pet_breed }).eq('id', pet.id)
+    await supabase.from('pets')
+      .update({
+        bio: form.bio,
+        location: form.location,
+        pet_breed: form.pet_breed
+      })
+      .eq('id', pet.id)
     setPet({ ...pet, ...form })
     setEditing(false)
     setSaving(false)
@@ -79,7 +145,7 @@ export default function Profile() {
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: 12, textAlign: 'center', padding: 20 }}>
       <div style={{ fontSize: '3rem' }}>🐾</div>
       <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.2rem', color: '#1E1347' }}>No pet profile found</div>
-      <p style={{ color: '#6B7280', fontSize: '0.88rem', maxWidth: 300 }}>Please sign out and sign up again — your details will be saved this time!</p>
+      <p style={{ color: '#6B7280', fontSize: '0.88rem', maxWidth: 300 }}>Please sign out and sign up again!</p>
       <button onClick={() => router.push('/')} style={{ background: 'linear-gradient(135deg,#FF6B35,#FF8C5A)', color: '#fff', border: 'none', borderRadius: 12, padding: '10px 22px', fontFamily: 'Nunito, sans-serif', fontWeight: 800, cursor: 'pointer', fontSize: '0.95rem' }}>
         Go to Sign Up 🐾
       </button>
@@ -90,26 +156,109 @@ export default function Profile() {
     <div style={{ background: '#FFFBF7', minHeight: '100vh' }}>
       <NavBar user={user} pet={pet} />
       <div style={{ maxWidth: 860, margin: '58px auto 0', paddingBottom: 40 }}>
+
+        {/* Cover + Avatar */}
         <div style={{ height: 240, background: 'linear-gradient(135deg, #FF6B35, #6C4BF6 60%, #FF6B9D)', borderRadius: '0 0 20px 20px', position: 'relative' }}>
-          <div style={{ width: 100, height: 100, borderRadius: '50%', border: '4px solid #fff', background: '#FFE8F0', boxShadow: '0 4px 20px rgba(0,0,0,0.12)', position: 'absolute', bottom: -28, left: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '3.2rem' }}>
-            {pet.emoji || '🐾'}
+
+          {/* Avatar with upload button */}
+          <div style={{ position: 'absolute', bottom: -40, left: 24 }}>
+            <div style={{ position: 'relative', width: 100, height: 100 }}>
+
+              {/* Avatar circle */}
+              <div style={{
+                width: 100, height: 100, borderRadius: '50%',
+                border: '4px solid #fff', background: '#FFE8F0',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '3.2rem', overflow: 'hidden', position: 'relative'
+              }}>
+                {avatarUploading ? (
+                  <div style={{
+                    position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    borderRadius: '50%', flexDirection: 'column', gap: 4
+                  }}>
+                    <div style={{ fontSize: '1.4rem' }}>⏳</div>
+                    <div style={{ fontSize: '0.6rem', color: '#fff', fontWeight: 800 }}>Uploading...</div>
+                  </div>
+                ) : avatarPreview ? (
+                  <img
+                    src={avatarPreview}
+                    alt="avatar"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                ) : (
+                  pet.emoji || '🐾'
+                )}
+              </div>
+
+              {/* Camera button */}
+              <div
+                onClick={() => !avatarUploading && avatarInputRef.current?.click()}
+                style={{
+                  position: 'absolute', bottom: 2, right: 2,
+                  width: 30, height: 30, borderRadius: '50%',
+                  background: avatarUploading ? '#ccc' : 'linear-gradient(135deg, #FF6B35, #6C4BF6)',
+                  border: '2.5px solid #fff',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: avatarUploading ? 'not-allowed' : 'pointer',
+                  fontSize: '0.8rem',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                  transition: 'transform 0.2s'
+                }}
+                title="Change profile photo"
+                onMouseEnter={e => { if (!avatarUploading) e.currentTarget.style.transform = 'scale(1.1)' }}
+                onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                📷
+              </div>
+
+              {/* Hidden file input */}
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarChange}
+                style={{ display: 'none' }}
+              />
+            </div>
           </div>
+
+          {/* Edit Profile button */}
           {!editing && (
-            <button onClick={() => setEditing(true)} style={{ position: 'absolute', top: 14, right: 14, background: 'rgba(255,255,255,0.22)', color: '#fff', backdropFilter: 'blur(8px)', border: '1.5px solid rgba(255,255,255,0.35)', borderRadius: 11, padding: '8px 16px', fontFamily: 'Nunito, sans-serif', fontWeight: 800, cursor: 'pointer', fontSize: '0.88rem' }}>
+            <button
+              onClick={() => setEditing(true)}
+              style={{
+                position: 'absolute', top: 14, right: 14,
+                background: 'rgba(255,255,255,0.22)', color: '#fff',
+                backdropFilter: 'blur(8px)',
+                border: '1.5px solid rgba(255,255,255,0.35)',
+                borderRadius: 11, padding: '8px 16px',
+                fontFamily: 'Nunito, sans-serif', fontWeight: 800,
+                cursor: 'pointer', fontSize: '0.88rem'
+              }}>
               ✏️ Edit Profile
             </button>
           )}
         </div>
 
-        <div style={{ padding: '38px 24px 0' }}>
+        <div style={{ padding: '52px 24px 0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
             <div>
-              <h1 style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.65rem' }}>{pet.pet_name} {pet.emoji || '🐾'}</h1>
-              <p style={{ color: '#6B7280', fontSize: '0.86rem', marginTop: 2 }}>{pet.pet_breed} · Managed by {pet.owner_name}</p>
+              <h1 style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.65rem' }}>
+                {pet.pet_name} {pet.emoji || '🐾'}
+              </h1>
+              <p style={{ color: '#6B7280', fontSize: '0.86rem', marginTop: 2 }}>
+                {pet.pet_breed} · Managed by {pet.owner_name}
+              </p>
               {!editing && (
                 <div style={{ marginTop: 8 }}>
                   {[['📍', pet.location || 'India'], ['🪙', `${pet.paw_coins || 0} PawCoins`]].map(([ic, tx]) => (
-                    <span key={tx} style={{ display: 'inline-block', padding: '3px 9px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 800, margin: 2, background: '#F3F0FF', color: '#6C4BF6' }}>{ic} {tx}</span>
+                    <span key={tx} style={{
+                      display: 'inline-block', padding: '3px 9px', borderRadius: 20,
+                      fontSize: '0.72rem', fontWeight: 800, margin: 2,
+                      background: '#F3F0FF', color: '#6C4BF6'
+                    }}>{ic} {tx}</span>
                   ))}
                 </div>
               )}
@@ -124,17 +273,22 @@ export default function Profile() {
             </div>
           </div>
 
+          {/* Edit Form */}
           {editing && (
             <div className="card" style={{ marginBottom: 16 }}>
               <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, marginBottom: 12 }}>✏️ Edit Profile</div>
               <label className="label">Bio</label>
-              <textarea className="input" value={form.bio || ''} onChange={e => setForm({ ...form, bio: e.target.value })} placeholder="Tell the world about your pet..." style={{ minHeight: 70, resize: 'none' }} />
+              <textarea className="input" value={form.bio || ''} onChange={e => setForm({ ...form, bio: e.target.value })}
+                placeholder="Tell the world about your pet..." style={{ minHeight: 70, resize: 'none' }} />
               <label className="label">Location</label>
-              <input className="input" value={form.location || ''} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="e.g. Dehradun, Uttarakhand" />
+              <input className="input" value={form.location || ''} onChange={e => setForm({ ...form, location: e.target.value })}
+                placeholder="e.g. Dehradun, Uttarakhand" />
               <label className="label">Breed</label>
               <input className="input" value={form.pet_breed || ''} onChange={e => setForm({ ...form, pet_breed: e.target.value })} />
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                <button className="btn-primary" onClick={saveProfile} disabled={saving}>{saving ? 'Saving...' : 'Save Changes'}</button>
+                <button className="btn-primary" onClick={saveProfile} disabled={saving}>
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </button>
                 <button className="btn-secondary" onClick={() => setEditing(false)}>Cancel</button>
               </div>
             </div>
@@ -146,38 +300,78 @@ export default function Profile() {
             </div>
           )}
 
+          {/* Tabs */}
           <div style={{ display: 'flex', borderBottom: '2px solid #EDE8FF', marginBottom: 14 }}>
             {['posts', 'about'].map(t => (
-              <button key={t} onClick={() => setTab(t)} style={{ padding: '9px 18px', border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'Nunito, sans-serif', fontWeight: 700, fontSize: '0.86rem', color: tab === t ? '#FF6B35' : '#6B7280', borderBottom: tab === t ? '3px solid #FF6B35' : '3px solid transparent', marginBottom: -2 }}>
+              <button key={t} onClick={() => setTab(t)}
+                style={{
+                  padding: '9px 18px', border: 'none', background: 'transparent',
+                  cursor: 'pointer', fontFamily: 'Nunito, sans-serif', fontWeight: 700,
+                  fontSize: '0.86rem', color: tab === t ? '#FF6B35' : '#6B7280',
+                  borderBottom: tab === t ? '3px solid #FF6B35' : '3px solid transparent',
+                  marginBottom: -2
+                }}>
                 {t.charAt(0).toUpperCase() + t.slice(1)}
               </button>
             ))}
           </div>
 
+          {/* Posts Tab */}
           {tab === 'posts' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {posts.length === 0 && <div className="card" style={{ textAlign: 'center', color: '#6B7280', padding: 30 }}>No posts yet — go share something on the feed! 🐾</div>}
+              {posts.length === 0 && (
+                <div className="card" style={{ textAlign: 'center', color: '#6B7280', padding: 30 }}>
+                  No posts yet — go share something on the feed! 🐾
+                </div>
+              )}
               {posts.map(p => (
                 <div key={p.id} className="card">
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#FFE8F0', border: '2px solid #FF6B35', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>{pet.emoji || '🐾'}</div>
+                    <div style={{
+                      width: 40, height: 40, borderRadius: '50%', background: '#FFE8F0',
+                      border: '2px solid #FF6B35', display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', fontSize: '1.2rem', overflow: 'hidden'
+                    }}>
+                      {avatarPreview
+                        ? <img src={avatarPreview} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : pet.emoji || '🐾'}
+                    </div>
                     <div>
                       <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 700 }}>{pet.pet_name}</div>
                       <div style={{ fontSize: '0.72rem', color: '#6B7280' }}>{timeAgo(p.created_at)}</div>
                     </div>
                   </div>
                   <p style={{ fontSize: '0.9rem', lineHeight: 1.65 }}>{p.content}</p>
+
+                  {/* Show post image if exists */}
+                  {p.image_url && (
+                    <div style={{ marginTop: 8, borderRadius: 12, overflow: 'hidden' }}>
+                      <img src={p.image_url} alt="post"
+                        style={{ width: '100%', maxHeight: 300, objectFit: 'cover', borderRadius: 12 }} />
+                    </div>
+                  )}
+
                   <div style={{ marginTop: 8, fontSize: '0.78rem', color: '#6B7280' }}>❤️ {p.likes || 0} paws</div>
                 </div>
               ))}
             </div>
           )}
 
+          {/* About Tab */}
           {tab === 'about' && (
             <div className="card">
-              <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, marginBottom: 14 }}>📋 About {pet.pet_name}</div>
+              <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, marginBottom: 14 }}>
+                📋 About {pet.pet_name}
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                {[['🐾 Name', pet.pet_name], ['🐶 Type', pet.pet_type], ['🧬 Breed', pet.pet_breed || '—'], ['📍 Location', pet.location || 'India'], ['🪙 PawCoins', `${pet.paw_coins || 0} coins`], ['👤 Managed by', pet.owner_name]].map(([l, v]) => (
+                {[
+                  ['🐾 Name', pet.pet_name],
+                  ['🐶 Type', pet.pet_type],
+                  ['🧬 Breed', pet.pet_breed || '—'],
+                  ['📍 Location', pet.location || 'India'],
+                  ['🪙 PawCoins', `${pet.paw_coins || 0} coins`],
+                  ['👤 Managed by', pet.owner_name]
+                ].map(([l, v]) => (
                   <div key={l} style={{ padding: 10, background: '#F9F5FF', borderRadius: 10 }}>
                     <div style={{ fontSize: '0.74rem', color: '#6B7280', marginBottom: 2 }}>{l}</div>
                     <div style={{ fontWeight: 700, fontSize: '0.88rem' }}>{v}</div>
