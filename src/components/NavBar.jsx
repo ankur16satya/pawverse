@@ -8,6 +8,7 @@ export default function NavBar({ user, pet }) {
   const [notifications, setNotifications] = useState([])
   const [showNotifs, setShowNotifs] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
+  const [pendingFriendCount, setPendingFriendCount] = useState(0)
   const notifRef = useRef(null)
 
   const nav = [
@@ -17,14 +18,15 @@ export default function NavBar({ user, pet }) {
     { href: '/chat',        icon: '💬', label: 'Chat' },
     { href: '/adopt',       icon: '🏠', label: 'Adopt' },
     { href: '/coins',       icon: '🪙', label: 'Coins' },
+    { href: '/friends',     icon: '👫', label: 'Friends' },
   ]
 
-  // Fetch notifications
   useEffect(() => {
     if (!user) return
     fetchNotifications()
+    fetchPendingFriendRequests()
 
-    // Real-time listener for new notifications
+    // Real-time notifications
     const channel = supabase
       .channel('notifications')
       .on('postgres_changes', {
@@ -38,7 +40,23 @@ export default function NavBar({ user, pet }) {
       })
       .subscribe()
 
-    return () => supabase.removeChannel(channel)
+    // Real-time friend requests
+    const friendChannel = supabase
+      .channel('friend_requests')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'friend_requests',
+        filter: `receiver_id=eq.${user.id}`
+      }, () => {
+        setPendingFriendCount(prev => prev + 1)
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+      supabase.removeChannel(friendChannel)
+    }
   }, [user])
 
   // Close dropdown when clicking outside
@@ -63,10 +81,18 @@ export default function NavBar({ user, pet }) {
     setUnreadCount((data || []).filter(n => !n.is_read).length)
   }
 
+  const fetchPendingFriendRequests = async () => {
+    const { data } = await supabase
+      .from('friend_requests')
+      .select('*')
+      .eq('receiver_id', user.id)
+      .eq('status', 'pending')
+    setPendingFriendCount((data || []).length)
+  }
+
   const handleBellClick = async () => {
     setShowNotifs(prev => !prev)
     if (!showNotifs && unreadCount > 0) {
-      // Mark all as read
       await supabase
         .from('notifications')
         .update({ is_read: true })
@@ -91,7 +117,8 @@ export default function NavBar({ user, pet }) {
     if (type === 'like') return '❤️'
     if (type === 'comment') return '💬'
     if (type === 'follow') return '🐾'
-    if (type === 'system') return '🔔'
+    if (type === 'friend_request') return '👫'
+    if (type === 'friend_accepted') return '✅'
     return '🔔'
   }
 
@@ -109,8 +136,7 @@ export default function NavBar({ user, pet }) {
       zIndex: 1000, gap: 10
     }}>
       {/* Logo */}
-      <div
-        onClick={() => router.push('/feed')}
+      <div onClick={() => router.push('/feed')}
         style={{
           fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.4rem',
           background: 'linear-gradient(135deg, #FF6B35, #6C4BF6)',
@@ -142,6 +168,19 @@ export default function NavBar({ user, pet }) {
               position: 'relative'
             }}>
             {n.icon}
+            {/* Friends badge on nav icon */}
+            {n.href === '/friends' && pendingFriendCount > 0 && (
+              <div style={{
+                position: 'absolute', top: 4, right: 4,
+                minWidth: 16, height: 16, background: '#FF4757',
+                borderRadius: '50%', border: '2px solid #fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '0.6rem', fontWeight: 800, color: '#fff',
+                fontFamily: 'Nunito, sans-serif'
+              }}>
+                {pendingFriendCount > 9 ? '9+' : pendingFriendCount}
+              </div>
+            )}
             {path === n.href && (
               <div style={{
                 position: 'absolute', bottom: 0, left: '25%', right: '25%',
@@ -154,7 +193,7 @@ export default function NavBar({ user, pet }) {
 
       {/* Right side */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {/* PawCoins badge */}
+        {/* PawCoins */}
         <div onClick={() => router.push('/coins')}
           style={{
             display: 'flex', alignItems: 'center', gap: 4,
@@ -162,18 +201,14 @@ export default function NavBar({ user, pet }) {
             borderRadius: 20, padding: '4px 10px', cursor: 'pointer'
           }}>
           <span style={{ fontSize: '0.85rem' }}>🪙</span>
-          <span style={{
-            fontFamily: "'Baloo 2', cursive", fontWeight: 800,
-            fontSize: '0.85rem', color: '#FF6B35'
-          }}>
+          <span style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.85rem', color: '#FF6B35' }}>
             {pet?.paw_coins ?? 0}
           </span>
         </div>
 
         {/* 🔔 Notification Bell */}
         <div ref={notifRef} style={{ position: 'relative' }}>
-          <div
-            onClick={handleBellClick}
+          <div onClick={handleBellClick}
             style={{
               width: 34, height: 34, borderRadius: '50%',
               background: showNotifs ? '#EDE8FF' : '#F3F0FF',
@@ -196,7 +231,7 @@ export default function NavBar({ user, pet }) {
             )}
           </div>
 
-          {/* Dropdown */}
+          {/* Notifications Dropdown */}
           {showNotifs && (
             <div style={{
               position: 'absolute', top: 42, right: 0,
@@ -204,7 +239,6 @@ export default function NavBar({ user, pet }) {
               borderRadius: 16, boxShadow: '0 8px 32px rgba(108,75,246,0.18)',
               border: '1px solid #EDE8FF', zIndex: 2000, overflow: 'hidden'
             }}>
-              {/* Header */}
               <div style={{
                 padding: '12px 16px', borderBottom: '1px solid #EDE8FF',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center'
@@ -213,13 +247,9 @@ export default function NavBar({ user, pet }) {
                   🔔 Notifications
                 </span>
                 {unreadCount === 0 && notifications.length > 0 && (
-                  <span style={{ fontSize: '0.72rem', color: '#22C55E', fontWeight: 700 }}>
-                    ✓ All caught up!
-                  </span>
+                  <span style={{ fontSize: '0.72rem', color: '#22C55E', fontWeight: 700 }}>✓ All caught up!</span>
                 )}
               </div>
-
-              {/* List */}
               <div style={{ maxHeight: 340, overflowY: 'auto' }}>
                 {notifications.length === 0 ? (
                   <div style={{ padding: 32, textAlign: 'center' }}>
@@ -233,13 +263,16 @@ export default function NavBar({ user, pet }) {
                   </div>
                 ) : (
                   notifications.map(n => (
-                    <div key={n.id} style={{
-                      display: 'flex', alignItems: 'flex-start', gap: 10,
-                      padding: '11px 16px',
-                      background: n.is_read ? '#fff' : '#F9F5FF',
-                      borderBottom: '1px solid #F3F0FF',
-                      transition: 'background 0.2s'
-                    }}>
+                    <div key={n.id}
+                      onClick={() => { if (n.type === 'friend_request') { setShowNotifs(false); router.push('/friends') } }}
+                      style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 10,
+                        padding: '11px 16px',
+                        background: n.is_read ? '#fff' : '#F9F5FF',
+                        borderBottom: '1px solid #F3F0FF',
+                        cursor: n.type === 'friend_request' ? 'pointer' : 'default',
+                        transition: 'background 0.2s'
+                      }}>
                       <div style={{
                         width: 36, height: 36, borderRadius: '50%',
                         background: '#F3F0FF', display: 'flex',
@@ -252,7 +285,12 @@ export default function NavBar({ user, pet }) {
                         <p style={{ fontSize: '0.82rem', color: '#1E1347', margin: 0, lineHeight: 1.5 }}>
                           {n.message}
                         </p>
-                        <span style={{ fontSize: '0.7rem', color: '#6B7280' }}>
+                        {n.type === 'friend_request' && (
+                          <span style={{ fontSize: '0.72rem', color: '#6C4BF6', fontWeight: 700 }}>
+                            Tap to view → Friends page
+                          </span>
+                        )}
+                        <span style={{ fontSize: '0.7rem', color: '#6B7280', display: 'block' }}>
                           {timeAgo(n.created_at)}
                         </span>
                       </div>
@@ -265,6 +303,20 @@ export default function NavBar({ user, pet }) {
                     </div>
                   ))
                 )}
+              </div>
+              {/* View Friends Page Link */}
+              <div
+                onClick={() => { setShowNotifs(false); router.push('/friends') }}
+                style={{
+                  padding: '10px 16px', textAlign: 'center',
+                  borderTop: '1px solid #EDE8FF', cursor: 'pointer',
+                  color: '#6C4BF6', fontWeight: 700, fontSize: '0.82rem',
+                  background: '#FAFAFA'
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = '#F3F0FF'}
+                onMouseLeave={e => e.currentTarget.style.background = '#FAFAFA'}
+              >
+                👫 View All Friend Requests
               </div>
             </div>
           )}
@@ -279,8 +331,7 @@ export default function NavBar({ user, pet }) {
             fontSize: '1.1rem', cursor: 'pointer', overflow: 'hidden'
           }}>
           {pet?.avatar_url
-            ? <img src={pet.avatar_url} alt="avatar"
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ? <img src={pet.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             : pet?.emoji || '🐾'}
         </div>
 
