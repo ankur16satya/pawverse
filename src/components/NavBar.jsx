@@ -2,60 +2,31 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 
-export default function NavBar({ user, pet, unreadMessages = 0 }) {
+export default function NavBar({ user, pet, unreadMessages }) {
   const router = useRouter()
   const path = router.pathname
   const [notifications, setNotifications] = useState([])
   const [showNotifs, setShowNotifs] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
   const [pendingFriendCount, setPendingFriendCount] = useState(0)
+  const [unreadMsgCount, setUnreadMsgCount] = useState(unreadMessages || 0)
   const notifRef = useRef(null)
+  const channelRef = useRef(null)
 
-  const nav = [
-  { href: '/feed',        icon: '🏠', label: 'Feed' },
-  { href: '/marketplace', icon: '🛍️', label: 'Market' },
-  { href: '/health',      icon: '🩺', label: 'Health' },
-  { href: '/chat',        icon: '💬', label: 'Chat' },
-  { href: '/adopt',       icon: '🏠', label: 'Adopt' },
-  { href: '/coins',       icon: '🪙', label: 'Coins' },
-  { href: '/friends',     icon: '👫', label: 'Friends' },
-]
+  // Sync prop changes (from chat.js)
+  useEffect(() => {
+    if (unreadMessages !== undefined) setUnreadMsgCount(unreadMessages)
+  }, [unreadMessages])
 
   useEffect(() => {
     if (!user) return
     fetchNotifications()
     fetchPendingFriendRequests()
-
-    // Real-time notifications
-    const channel = supabase
-      .channel('notifications')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'notifications',
-        filter: `user_id=eq.${user.id}`
-      }, (payload) => {
-        setNotifications(prev => [payload.new, ...prev])
-        setUnreadCount(prev => prev + 1)
-      })
-      .subscribe()
-
-    // Real-time friend requests
-    const friendChannel = supabase
-      .channel('friend_requests')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'friend_requests',
-        filter: `receiver_id=eq.${user.id}`
-      }, () => {
-        setPendingFriendCount(prev => prev + 1)
-      })
-      .subscribe()
+    fetchUnreadMessages()
+    setupRealtimeListeners()
 
     return () => {
-      supabase.removeChannel(channel)
-      supabase.removeChannel(friendChannel)
+      if (channelRef.current) supabase.removeChannel(channelRef.current)
     }
   }, [user])
 
@@ -69,6 +40,83 @@ export default function NavBar({ user, pet, unreadMessages = 0 }) {
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+
+  const setupRealtimeListeners = () => {
+    if (channelRef.current) supabase.removeChannel(channelRef.current)
+
+    const channel = supabase
+      .channel(`navbar-${user.id}`)
+      // New notifications
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notifications',
+        filter: `user_id=eq.${user.id}`
+      }, (payload) => {
+        setNotifications(prev => [payload.new, ...prev])
+        setUnreadCount(prev => prev + 1)
+      })
+      // New friend requests
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'friend_requests',
+        filter: `receiver_id=eq.${user.id}`
+      }, (payload) => {
+        if (payload.new.status === 'pending') {
+          setPendingFriendCount(prev => prev + 1)
+        }
+      })
+      // New messages — this is the key fix
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+      }, async (payload) => {
+        const newMsg = payload.new
+
+        // Ignore messages I sent
+        if (newMsg.sender_id === user.id) return
+
+        // Check if message is in my conversation
+        const { data: conv } = await supabase
+          .from('conversations')
+          .select('*')
+          .eq('id', newMsg.conversation_id)
+          .or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`)
+          .single()
+
+        if (!conv) return
+
+        // Only count as unread if not already read
+        if (!newMsg.is_read) {
+          setUnreadMsgCount(prev => prev + 1)
+
+          // Play sound
+          try {
+            const audio = new Audio('/message.mp3')
+            audio.volume = 0.5
+            audio.play().catch(() => {})
+          } catch (e) {}
+        }
+      })
+      // Message read — decrease count
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'messages',
+      }, (payload) => {
+        const updated = payload.new
+        const old = payload.old
+        // If message was marked as read and was unread before
+        if (!old.is_read && updated.is_read && updated.sender_id !== user.id) {
+          setUnreadMsgCount(prev => Math.max(0, prev - 1))
+        }
+      })
+      .subscribe()
+
+    channelRef.current = channel
+  }
 
   const fetchNotifications = async () => {
     const { data } = await supabase
@@ -88,6 +136,28 @@ export default function NavBar({ user, pet, unreadMessages = 0 }) {
       .eq('receiver_id', user.id)
       .eq('status', 'pending')
     setPendingFriendCount((data || []).length)
+  }
+
+  const fetchUnreadMessages = async () => {
+    // Count all unread messages across all my conversations
+    const { data: convs } = await supabase
+      .from('conversations')
+      .select('id')
+      .or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`)
+
+    if (!convs || convs.length === 0) return
+
+    let total = 0
+    for (const conv of convs) {
+      const { count } = await supabase
+        .from('messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('conversation_id', conv.id)
+        .eq('is_read', false)
+        .neq('sender_id', user.id)
+      total += count || 0
+    }
+    setUnreadMsgCount(total)
   }
 
   const handleBellClick = async () => {
@@ -119,6 +189,7 @@ export default function NavBar({ user, pet, unreadMessages = 0 }) {
     if (type === 'follow') return '🐾'
     if (type === 'friend_request') return '👫'
     if (type === 'friend_accepted') return '✅'
+    if (type === 'message') return '💬'
     return '🔔'
   }
 
@@ -126,6 +197,16 @@ export default function NavBar({ user, pet, unreadMessages = 0 }) {
     await supabase.auth.signOut()
     router.push('/')
   }
+
+  const nav = [
+    { href: '/feed',        icon: '🏠', label: 'Feed' },
+    { href: '/marketplace', icon: '🛍️', label: 'Market' },
+    { href: '/health',      icon: '🩺', label: 'Health' },
+    { href: '/chat',        icon: '💬', label: 'Chat' },
+    { href: '/adopt',       icon: '🏠', label: 'Adopt' },
+    { href: '/coins',       icon: '🪙', label: 'Coins' },
+    { href: '/friends',     icon: '👫', label: 'Friends' },
+  ]
 
   return (
     <nav style={{
@@ -159,49 +240,52 @@ export default function NavBar({ user, pet, unreadMessages = 0 }) {
       {/* Nav links */}
       <div style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: 2 }}>
         {nav.map(n => (
-  <button key={n.href} onClick={() => router.push(n.href)}
-    title={n.label}
-    style={{
-      padding: '7px 14px', border: 'none', cursor: 'pointer', fontSize: '1.15rem',
-      borderRadius: 10, transition: 'background 0.2s',
-      background: path === n.href ? '#F3F0FF' : 'transparent',
-      position: 'relative'
-    }}>
-    {n.icon}
-    {/* Unread messages badge on chat */}
-    {n.href === '/chat' && unreadMessages > 0 && (
-      <div style={{
-        position: 'absolute', top: 4, right: 4,
-        minWidth: 16, height: 16, background: '#FF4757',
-        borderRadius: '50%', border: '2px solid #fff',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: '0.6rem', fontWeight: 800, color: '#fff',
-        fontFamily: 'Nunito, sans-serif'
-      }}>
-        {unreadMessages > 9 ? '9+' : unreadMessages}
-      </div>
-    )}
-    {/* Friends badge */}
-    {n.href === '/friends' && pendingFriendCount > 0 && (
-      <div style={{
-        position: 'absolute', top: 4, right: 4,
-        minWidth: 16, height: 16, background: '#FF4757',
-        borderRadius: '50%', border: '2px solid #fff',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: '0.6rem', fontWeight: 800, color: '#fff',
-        fontFamily: 'Nunito, sans-serif'
-      }}>
-        {pendingFriendCount > 9 ? '9+' : pendingFriendCount}
-      </div>
-    )}
-    {path === n.href && (
-      <div style={{
-        position: 'absolute', bottom: 0, left: '25%', right: '25%',
-        height: 3, background: '#FF6B35', borderRadius: 2
-      }} />
-    )}
-  </button>
-))}
+          <button key={n.href} onClick={() => router.push(n.href)}
+            title={n.label}
+            style={{
+              padding: '7px 14px', border: 'none', cursor: 'pointer',
+              fontSize: '1.15rem', borderRadius: 10, transition: 'background 0.2s',
+              background: path === n.href ? '#F3F0FF' : 'transparent',
+              position: 'relative'
+            }}>
+            {n.icon}
+
+            {/* 💬 Unread messages badge */}
+            {n.href === '/chat' && unreadMsgCount > 0 && (
+              <div style={{
+                position: 'absolute', top: 4, right: 4,
+                minWidth: 16, height: 16, background: '#FF4757',
+                borderRadius: '50%', border: '2px solid #fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '0.6rem', fontWeight: 800, color: '#fff',
+                fontFamily: 'Nunito, sans-serif'
+              }}>
+                {unreadMsgCount > 9 ? '9+' : unreadMsgCount}
+              </div>
+            )}
+
+            {/* 👫 Pending friend requests badge */}
+            {n.href === '/friends' && pendingFriendCount > 0 && (
+              <div style={{
+                position: 'absolute', top: 4, right: 4,
+                minWidth: 16, height: 16, background: '#FF4757',
+                borderRadius: '50%', border: '2px solid #fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '0.6rem', fontWeight: 800, color: '#fff',
+                fontFamily: 'Nunito, sans-serif'
+              }}>
+                {pendingFriendCount > 9 ? '9+' : pendingFriendCount}
+              </div>
+            )}
+
+            {path === n.href && (
+              <div style={{
+                position: 'absolute', bottom: 0, left: '25%', right: '25%',
+                height: 3, background: '#FF6B35', borderRadius: 2
+              }} />
+            )}
+          </button>
+        ))}
       </div>
 
       {/* Right side */}
@@ -214,9 +298,10 @@ export default function NavBar({ user, pet, unreadMessages = 0 }) {
             borderRadius: 20, padding: '4px 10px', cursor: 'pointer'
           }}>
           <span style={{ fontSize: '0.85rem' }}>🪙</span>
-          <span style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.85rem', color: '#FF6B35' }}>
-            {pet?.paw_coins ?? 0}
-          </span>
+          <span style={{
+            fontFamily: "'Baloo 2', cursive", fontWeight: 800,
+            fontSize: '0.85rem', color: '#FF6B35'
+          }}>{pet?.paw_coins ?? 0}</span>
         </div>
 
         {/* 🔔 Notification Bell */}
@@ -247,9 +332,9 @@ export default function NavBar({ user, pet, unreadMessages = 0 }) {
           {/* Notifications Dropdown */}
           {showNotifs && (
             <div style={{
-              position: 'absolute', top: 42, right: 0,
-              width: 320, background: '#fff',
-              borderRadius: 16, boxShadow: '0 8px 32px rgba(108,75,246,0.18)',
+              position: 'absolute', top: 42, right: 0, width: 320,
+              background: '#fff', borderRadius: 16,
+              boxShadow: '0 8px 32px rgba(108,75,246,0.18)',
               border: '1px solid #EDE8FF', zIndex: 2000, overflow: 'hidden'
             }}>
               <div style={{
@@ -277,19 +362,24 @@ export default function NavBar({ user, pet, unreadMessages = 0 }) {
                 ) : (
                   notifications.map(n => (
                     <div key={n.id}
-                      onClick={() => { if (n.type === 'friend_request') { setShowNotifs(false); router.push('/friends') } }}
+                      onClick={() => {
+                        if (n.type === 'friend_request') { setShowNotifs(false); router.push('/friends') }
+                        if (n.type === 'message') { setShowNotifs(false); router.push('/chat') }
+                      }}
                       style={{
                         display: 'flex', alignItems: 'flex-start', gap: 10,
                         padding: '11px 16px',
                         background: n.is_read ? '#fff' : '#F9F5FF',
                         borderBottom: '1px solid #F3F0FF',
-                        cursor: n.type === 'friend_request' ? 'pointer' : 'default',
+                        cursor: ['friend_request', 'message'].includes(n.type) ? 'pointer' : 'default',
                         transition: 'background 0.2s'
-                      }}>
+                      }}
+                      onMouseEnter={e => { if (['friend_request','message'].includes(n.type)) e.currentTarget.style.background = '#F3F0FF' }}
+                      onMouseLeave={e => e.currentTarget.style.background = n.is_read ? '#fff' : '#F9F5FF'}
+                    >
                       <div style={{
-                        width: 36, height: 36, borderRadius: '50%',
-                        background: '#F3F0FF', display: 'flex',
-                        alignItems: 'center', justifyContent: 'center',
+                        width: 36, height: 36, borderRadius: '50%', background: '#F3F0FF',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: '1rem', flexShrink: 0
                       }}>
                         {notifIcon(n.type)}
@@ -301,6 +391,11 @@ export default function NavBar({ user, pet, unreadMessages = 0 }) {
                         {n.type === 'friend_request' && (
                           <span style={{ fontSize: '0.72rem', color: '#6C4BF6', fontWeight: 700 }}>
                             Tap to view → Friends page
+                          </span>
+                        )}
+                        {n.type === 'message' && (
+                          <span style={{ fontSize: '0.72rem', color: '#6C4BF6', fontWeight: 700 }}>
+                            Tap to open → Messages
                           </span>
                         )}
                         <span style={{ fontSize: '0.7rem', color: '#6B7280', display: 'block' }}>
@@ -317,7 +412,6 @@ export default function NavBar({ user, pet, unreadMessages = 0 }) {
                   ))
                 )}
               </div>
-              {/* View Friends Page Link */}
               <div
                 onClick={() => { setShowNotifs(false); router.push('/friends') }}
                 style={{

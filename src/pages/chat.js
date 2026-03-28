@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
@@ -22,10 +22,22 @@ export default function Chat() {
   const [imagePreview, setImagePreview] = useState(null)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [unreadCounts, setUnreadCounts] = useState({})
+  const [totalUnread, setTotalUnread] = useState(0)
+
   const messagesEndRef = useRef(null)
   const fileInputRef = useRef(null)
   const emojiRef = useRef(null)
-  const channelRef = useRef(null)
+  const msgChannelRef = useRef(null)
+  const globalChannelRef = useRef(null)
+  const activeConvRef = useRef(null)
+  const userRef = useRef(null)
+  const petRef = useRef(null)
+  const audioRef = useRef(null)
+
+  // Keep refs in sync with state
+  useEffect(() => { activeConvRef.current = activeConv }, [activeConv])
+  useEffect(() => { userRef.current = user }, [user])
+  useEffect(() => { petRef.current = pet }, [pet])
 
   useEffect(() => { init() }, [])
 
@@ -44,25 +56,122 @@ export default function Chat() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  // Cleanup channels on unmount
+  useEffect(() => {
+    return () => {
+      if (msgChannelRef.current) supabase.removeChannel(msgChannelRef.current)
+      if (globalChannelRef.current) supabase.removeChannel(globalChannelRef.current)
+    }
+  }, [])
+
+  const playMessageSound = () => {
+    try {
+      if (!audioRef.current) {
+        audioRef.current = new Audio('/message.mp3')
+        audioRef.current.volume = 0.5
+      }
+      audioRef.current.currentTime = 0
+      audioRef.current.play().catch(() => {})
+    } catch (e) {}
+  }
+
   const init = async () => {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { router.push('/'); return }
     setUser(session.user)
+    userRef.current = session.user
 
     const { data: petData } = await supabase
       .from('pets').select('*').eq('user_id', session.user.id).single()
     setPet(petData)
+    petRef.current = petData
 
     await fetchFriendsAndConversations(session.user.id)
+    setupGlobalListener(session.user.id)
     setLoading(false)
   }
 
+  // Global listener — catches ALL new messages for this user
+  const setupGlobalListener = (userId) => {
+    if (globalChannelRef.current) supabase.removeChannel(globalChannelRef.current)
+
+    const channel = supabase
+      .channel(`global-messages-${userId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+      }, async (payload) => {
+        const newMsg = payload.new
+
+        // Check if this message belongs to one of my conversations
+        const { data: conv } = await supabase
+          .from('conversations')
+          .select('*')
+          .eq('id', newMsg.conversation_id)
+          .or(`participant_1.eq.${userId},participant_2.eq.${userId}`)
+          .single()
+
+        if (!conv) return // Not my conversation
+
+        const isFromMe = newMsg.sender_id === userId
+        const isInActiveConv = activeConvRef.current?.id === newMsg.conversation_id
+
+        if (!isFromMe) {
+          // Play sound for incoming messages
+          playMessageSound()
+
+          if (isInActiveConv) {
+            // Auto mark as read since window is open
+            await supabase.from('messages')
+              .update({ is_read: true })
+              .eq('id', newMsg.id)
+            newMsg.is_read = true
+          } else {
+            // Increment unread count for that conversation
+            setUnreadCounts(prev => ({
+              ...prev,
+              [newMsg.conversation_id]: (prev[newMsg.conversation_id] || 0) + 1
+            }))
+            setTotalUnread(prev => prev + 1)
+          }
+        }
+
+        // If message is for active conversation, add to messages list
+        if (isInActiveConv) {
+          setMessages(prev => {
+            if (prev.find(m => m.id === newMsg.id)) return prev
+            return [...prev, newMsg]
+          })
+        }
+
+        // Update conversation last message preview
+        setConversations(prev => prev.map(c =>
+          c.id === newMsg.conversation_id
+            ? { ...c, last_message: newMsg.content || '📸 Image', last_message_at: newMsg.created_at }
+            : c
+        ))
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'messages',
+      }, (payload) => {
+        const updated = payload.new
+        // Update read status in real-time for sent messages
+        setMessages(prev => prev.map(m =>
+          m.id === updated.id ? { ...m, is_read: updated.is_read } : m
+        ))
+      })
+      .subscribe()
+
+    globalChannelRef.current = channel
+  }
+
   const fetchFriendsAndConversations = async (userId) => {
-    // Get accepted friends
     const { data: sent } = await supabase
       .from('friend_requests').select('*')
       .eq('sender_id', userId).eq('status', 'accepted')
-
     const { data: received } = await supabase
       .from('friend_requests').select('*')
       .eq('receiver_id', userId).eq('status', 'accepted')
@@ -78,15 +187,14 @@ export default function Chat() {
     }
     setFriends(friendList)
 
-    // Get conversations
     const { data: convs } = await supabase
       .from('conversations').select('*')
       .or(`participant_1.eq.${userId},participant_2.eq.${userId}`)
       .order('last_message_at', { ascending: false })
-
     setConversations(convs || [])
 
-    // Get unread counts per conversation
+    // Count unread per conversation
+    let total = 0
     const counts = {}
     for (const conv of (convs || [])) {
       const { count } = await supabase
@@ -96,8 +204,10 @@ export default function Chat() {
         .eq('is_read', false)
         .neq('sender_id', userId)
       counts[conv.id] = count || 0
+      total += count || 0
     }
     setUnreadCounts(counts)
+    setTotalUnread(total)
   }
 
   const openConversation = async (friend) => {
@@ -105,7 +215,6 @@ export default function Chat() {
     setMessages([])
     setShowEmoji(false)
 
-    // Find or create conversation
     let conv = conversations.find(c =>
       (c.participant_1 === user.id && c.participant_2 === friend.user_id) ||
       (c.participant_2 === user.id && c.participant_1 === friend.user_id)
@@ -126,63 +235,35 @@ export default function Chat() {
     }
 
     setActiveConv(conv)
+    activeConvRef.current = conv
 
     // Fetch messages
-    await fetchMessages(conv.id)
+    const { data: msgs } = await supabase
+      .from('messages').select('*')
+      .eq('conversation_id', conv.id)
+      .order('created_at', { ascending: true })
+    setMessages(msgs || [])
 
     // Mark all as read
-    await supabase.from('messages')
-      .update({ is_read: true })
-      .eq('conversation_id', conv.id)
-      .eq('is_read', false)
-      .neq('sender_id', user.id)
+    const unreadMsgIds = (msgs || [])
+      .filter(m => !m.is_read && m.sender_id !== user.id)
+      .map(m => m.id)
 
+    if (unreadMsgIds.length > 0) {
+      await supabase.from('messages')
+        .update({ is_read: true })
+        .in('id', unreadMsgIds)
+
+      // Update local read status
+      setMessages(prev => prev.map(m =>
+        unreadMsgIds.includes(m.id) ? { ...m, is_read: true } : m
+      ))
+    }
+
+    // Reset unread count for this conversation
+    const prevUnread = unreadCounts[conv.id] || 0
     setUnreadCounts(prev => ({ ...prev, [conv.id]: 0 }))
-
-    // Subscribe to real-time messages
-    if (channelRef.current) supabase.removeChannel(channelRef.current)
-    const channel = supabase
-      .channel(`messages:${conv.id}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages',
-        filter: `conversation_id=eq.${conv.id}`
-      }, async (payload) => {
-        const newMsg = payload.new
-        setMessages(prev => {
-          if (prev.find(m => m.id === newMsg.id)) return prev
-          return [...prev, newMsg]
-        })
-        // Auto mark as read if from friend
-        if (newMsg.sender_id !== user.id) {
-          await supabase.from('messages')
-            .update({ is_read: true }).eq('id', newMsg.id)
-        }
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-      })
-      .subscribe()
-    channelRef.current = channel
-  }
-
-  const fetchMessages = async (convId) => {
-    const { data } = await supabase
-      .from('messages').select('*')
-      .eq('conversation_id', convId)
-      .order('created_at', { ascending: true })
-    setMessages(data || [])
-  }
-
-  const uploadChatImage = async (file) => {
-    const ext = file.name.split('.').pop()
-    const fileName = `${user.id}/${Date.now()}.${ext}`
-    const { error } = await supabase.storage
-      .from('chat-images')
-      .upload(fileName, file, { cacheControl: '3600', upsert: false })
-    if (error) throw error
-    const { data: { publicUrl } } = supabase.storage
-      .from('chat-images').getPublicUrl(fileName)
-    return publicUrl
+    setTotalUnread(prev => Math.max(0, prev - prevUnread))
   }
 
   const sendMessage = async () => {
@@ -193,7 +274,15 @@ export default function Chat() {
       let imageUrl = null
       if (selectedImage) {
         setUploadingImage(true)
-        imageUrl = await uploadChatImage(selectedImage)
+        const ext = selectedImage.name.split('.').pop()
+        const fileName = `${user.id}/${Date.now()}.${ext}`
+        const { error: upErr } = await supabase.storage
+          .from('chat-images')
+          .upload(fileName, selectedImage, { cacheControl: '3600', upsert: false })
+        if (upErr) throw upErr
+        const { data: { publicUrl } } = supabase.storage
+          .from('chat-images').getPublicUrl(fileName)
+        imageUrl = publicUrl
         setUploadingImage(false)
       }
 
@@ -205,23 +294,15 @@ export default function Chat() {
         is_read: false,
       }
 
-      const { data: sentMsg } = await supabase
-        .from('messages').insert(msgData).select().single()
+      await supabase.from('messages').insert(msgData)
 
-      if (sentMsg) {
-        setMessages(prev => {
-          if (prev.find(m => m.id === sentMsg.id)) return prev
-          return [...prev, sentMsg]
-        })
-      }
-
-      // Update conversation last message
+      // Update conversation preview
       await supabase.from('conversations').update({
         last_message: newMessage.trim() || '📸 Image',
         last_message_at: new Date().toISOString()
       }).eq('id', activeConv.id)
 
-      // Send notification to friend
+      // Send notification
       await supabase.from('notifications').insert({
         user_id: activeFriend.user_id,
         type: 'message',
@@ -234,8 +315,8 @@ export default function Chat() {
       if (fileInputRef.current) fileInputRef.current.value = ''
     } catch (err) {
       alert('Failed to send message. Please try again.')
+      setUploadingImage(false)
     }
-
     setSending(false)
   }
 
@@ -254,6 +335,8 @@ export default function Chat() {
     setImagePreview(URL.createObjectURL(file))
   }
 
+  const formatTime = (ts) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
   const timeAgo = (ts) => {
     const diff = Date.now() - new Date(ts)
     const m = Math.floor(diff / 60000)
@@ -263,17 +346,6 @@ export default function Chat() {
     if (h < 24) return `${h}h ago`
     return `${Math.floor(h / 24)}d ago`
   }
-
-  const formatTime = (ts) => {
-    return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  }
-
-  const getConvFriend = (conv) => {
-    const friendId = conv.participant_1 === user.id ? conv.participant_2 : conv.participant_1
-    return friends.find(f => f.user_id === friendId)
-  }
-
-  const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0)
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontSize: '2rem' }}>🐾</div>
@@ -285,34 +357,20 @@ export default function Chat() {
 
       <div style={{ maxWidth: 1000, margin: '58px auto 0', height: 'calc(100vh - 58px)', display: 'flex', overflow: 'hidden' }}>
 
-        {/* LEFT — Friend/Conversation List */}
-        <div style={{
-          width: 300, borderRight: '1px solid #EDE8FF', background: '#fff',
-          display: 'flex', flexDirection: 'column', flexShrink: 0
-        }}>
-          {/* Header */}
+        {/* LEFT — Friend List */}
+        <div style={{ width: 300, borderRight: '1px solid #EDE8FF', background: '#fff', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
           <div style={{ padding: '16px 14px 10px', borderBottom: '1px solid #EDE8FF' }}>
-            <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.2rem', color: '#1E1347' }}>
-              💬 Messages
-            </div>
-            <div style={{ fontSize: '0.78rem', color: '#6B7280', marginTop: 2 }}>
-              {friends.length} friend{friends.length !== 1 ? 's' : ''}
-            </div>
+            <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.2rem', color: '#1E1347' }}>💬 Messages</div>
+            <div style={{ fontSize: '0.78rem', color: '#6B7280', marginTop: 2 }}>{friends.length} friend{friends.length !== 1 ? 's' : ''}</div>
           </div>
 
-          {/* Friends list */}
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {friends.length === 0 ? (
               <div style={{ padding: 24, textAlign: 'center' }}>
                 <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>🐾</div>
-                <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.95rem', color: '#1E1347' }}>
-                  No friends yet
-                </div>
-                <p style={{ color: '#6B7280', fontSize: '0.78rem', marginTop: 4 }}>
-                  Add friends first to start chatting!
-                </p>
-                <button onClick={() => router.push('/friends')}
-                  className="btn-primary"
+                <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.95rem', color: '#1E1347' }}>No friends yet</div>
+                <p style={{ color: '#6B7280', fontSize: '0.78rem', marginTop: 4 }}>Add friends first to start chatting!</p>
+                <button onClick={() => router.push('/friends')} className="btn-primary"
                   style={{ marginTop: 10, padding: '7px 16px', fontSize: '0.8rem', borderRadius: 10 }}>
                   👫 Find Friends
                 </button>
@@ -327,43 +385,36 @@ export default function Chat() {
                 const isActive = activeFriend?.user_id === friend.user_id
 
                 return (
-                  <div key={friend.id}
-                    onClick={() => openConversation(friend)}
+                  <div key={friend.id} onClick={() => openConversation(friend)}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 10,
-                      padding: '12px 14px', cursor: 'pointer',
-                      background: isActive ? '#F3F0FF' : 'transparent',
-                      borderBottom: '1px solid #F9F5FF',
-                      transition: 'background 0.2s'
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px',
+                      cursor: 'pointer', background: isActive ? '#F3F0FF' : 'transparent',
+                      borderBottom: '1px solid #F9F5FF', transition: 'background 0.2s'
                     }}
                     onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = '#FAFAFA' }}
                     onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent' }}
                   >
-                    {/* Avatar */}
                     <div style={{
                       width: 46, height: 46, borderRadius: '50%', background: '#FFE8F0',
                       border: `2px solid ${isActive ? '#6C4BF6' : '#FF6B35'}`,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '1.4rem', overflow: 'hidden', flexShrink: 0, position: 'relative'
+                      fontSize: '1.4rem', overflow: 'hidden', flexShrink: 0
                     }}>
                       {friend.avatar_url
                         ? <img src={friend.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         : friend.emoji || '🐾'}
                     </div>
-
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.9rem', color: '#1E1347' }}>
                           {friend.pet_name}
                         </span>
                         {conv?.last_message_at && (
-                          <span style={{ fontSize: '0.68rem', color: '#6B7280' }}>
-                            {timeAgo(conv.last_message_at)}
-                          </span>
+                          <span style={{ fontSize: '0.68rem', color: '#6B7280' }}>{timeAgo(conv.last_message_at)}</span>
                         )}
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.75rem', color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>
+                        <span style={{ fontSize: '0.75rem', color: unread > 0 ? '#6C4BF6' : '#6B7280', fontWeight: unread > 0 ? 700 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>
                           {conv?.last_message || 'Start a conversation 🐾'}
                         </span>
                         {unread > 0 && (
@@ -384,25 +435,19 @@ export default function Chat() {
         </div>
 
         {/* RIGHT — Chat Window */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#FFFBF7' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#FFFBF7', position: 'relative' }}>
           {!activeConv ? (
-            // No conversation selected
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
               <div style={{ fontSize: '4rem' }}>🐾</div>
               <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.3rem', color: '#1E1347' }}>
                 Select a friend to chat
               </div>
-              <p style={{ color: '#6B7280', fontSize: '0.88rem' }}>
-                Pick a friend from the left to start chatting!
-              </p>
+              <p style={{ color: '#6B7280', fontSize: '0.88rem' }}>Pick a friend from the left to start chatting!</p>
             </div>
           ) : (
             <>
               {/* Chat Header */}
-              <div style={{
-                padding: '12px 16px', borderBottom: '1px solid #EDE8FF',
-                background: '#fff', display: 'flex', alignItems: 'center', gap: 12
-              }}>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid #EDE8FF', background: '#fff', display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{
                   width: 42, height: 42, borderRadius: '50%', background: '#FFE8F0',
                   border: '2px solid #FF6B35', display: 'flex', alignItems: 'center',
@@ -416,9 +461,7 @@ export default function Chat() {
                   <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1rem', color: '#1E1347' }}>
                     {activeFriend?.pet_name}
                   </div>
-                  <div style={{ fontSize: '0.72rem', color: '#22C55E', fontWeight: 700 }}>
-                    🟢 Friends
-                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#22C55E', fontWeight: 700 }}>🟢 Friends</div>
                 </div>
               </div>
 
@@ -447,7 +490,6 @@ export default function Chat() {
                       display: 'flex', flexDirection: isMe ? 'row-reverse' : 'row',
                       alignItems: 'flex-end', gap: 6, marginBottom: 2
                     }}>
-                      {/* Friend avatar */}
                       {!isMe && (
                         <div style={{
                           width: 28, height: 28, borderRadius: '50%', background: '#FFE8F0',
@@ -462,29 +504,16 @@ export default function Chat() {
                       )}
 
                       <div style={{ maxWidth: '65%', display: 'flex', flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start' }}>
-                        {/* Image */}
                         {msg.image_url && (
-                          <div style={{ marginBottom: msg.content ? 4 : 0 }}>
-                            <img src={msg.image_url} alt="shared"
-                              style={{
-                                maxWidth: 220, maxHeight: 220, borderRadius: 14,
-                                objectFit: 'cover', display: 'block',
-                                border: '2px solid #EDE8FF'
-                              }} />
-                          </div>
+                          <img src={msg.image_url} alt="shared"
+                            style={{ maxWidth: 220, maxHeight: 220, borderRadius: 14, objectFit: 'cover', display: 'block', border: '2px solid #EDE8FF', marginBottom: msg.content ? 4 : 0 }} />
                         )}
-
-                        {/* Text bubble */}
                         {msg.content && (
                           <div style={{
                             padding: '9px 13px',
-                            background: isMe
-                              ? 'linear-gradient(135deg, #FF6B35, #6C4BF6)'
-                              : '#fff',
+                            background: isMe ? 'linear-gradient(135deg, #FF6B35, #6C4BF6)' : '#fff',
                             color: isMe ? '#fff' : '#1E1347',
-                            borderRadius: isMe
-                              ? '18px 18px 4px 18px'
-                              : '18px 18px 18px 4px',
+                            borderRadius: isMe ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
                             fontSize: '0.88rem', lineHeight: 1.5,
                             boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
                             border: isMe ? 'none' : '1px solid #EDE8FF',
@@ -493,15 +522,15 @@ export default function Chat() {
                             {msg.content}
                           </div>
                         )}
-
-                        {/* Time + Read receipt */}
                         {isLastFromSender && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                            <span style={{ fontSize: '0.65rem', color: '#9CA3AF' }}>
-                              {formatTime(msg.created_at)}
-                            </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3 }}>
+                            <span style={{ fontSize: '0.65rem', color: '#9CA3AF' }}>{formatTime(msg.created_at)}</span>
                             {isMe && (
-                              <span style={{ fontSize: '0.65rem', color: msg.is_read ? '#6C4BF6' : '#9CA3AF' }}>
+                              <span style={{
+                                fontSize: '0.72rem',
+                                color: msg.is_read ? '#6C4BF6' : '#9CA3AF',
+                                fontWeight: 700
+                              }}>
                                 {msg.is_read ? '✓✓' : '✓'}
                               </span>
                             )}
@@ -516,24 +545,26 @@ export default function Chat() {
 
               {/* Image Preview */}
               {imagePreview && (
-                <div style={{ padding: '8px 16px 0', position: 'relative', display: 'inline-block' }}>
-                  <img src={imagePreview} alt="preview"
-                    style={{ height: 80, borderRadius: 10, objectFit: 'cover', border: '2px solid #EDE8FF' }} />
-                  <button
-                    onClick={() => { setSelectedImage(null); setImagePreview(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
-                    style={{
-                      position: 'absolute', top: 4, right: 4, width: 22, height: 22,
-                      borderRadius: '50%', background: 'rgba(0,0,0,0.6)', color: '#fff',
-                      border: 'none', cursor: 'pointer', fontSize: '0.7rem',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center'
-                    }}>✕</button>
+                <div style={{ padding: '8px 16px 0', display: 'flex' }}>
+                  <div style={{ position: 'relative', display: 'inline-block' }}>
+                    <img src={imagePreview} alt="preview"
+                      style={{ height: 80, borderRadius: 10, objectFit: 'cover', border: '2px solid #EDE8FF' }} />
+                    <button
+                      onClick={() => { setSelectedImage(null); setImagePreview(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
+                      style={{
+                        position: 'absolute', top: -8, right: -8, width: 22, height: 22,
+                        borderRadius: '50%', background: '#FF4757', color: '#fff',
+                        border: 'none', cursor: 'pointer', fontSize: '0.7rem',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800
+                      }}>✕</button>
+                  </div>
                 </div>
               )}
 
               {/* Emoji Picker */}
               {showEmoji && (
                 <div ref={emojiRef} style={{
-                  position: 'absolute', bottom: 80, right: 20,
+                  position: 'absolute', bottom: 70, left: 60,
                   background: '#fff', border: '1px solid #EDE8FF',
                   borderRadius: 16, padding: 12, zIndex: 100,
                   boxShadow: '0 8px 32px rgba(108,75,246,0.15)',
@@ -545,8 +576,7 @@ export default function Chat() {
                       onClick={() => setNewMessage(prev => prev + emoji)}
                       style={{
                         background: 'none', border: 'none', cursor: 'pointer',
-                        fontSize: '1.2rem', padding: 4, borderRadius: 6,
-                        transition: 'background 0.15s'
+                        fontSize: '1.2rem', padding: 4, borderRadius: 6
                       }}
                       onMouseEnter={e => e.currentTarget.style.background = '#F3F0FF'}
                       onMouseLeave={e => e.currentTarget.style.background = 'none'}
@@ -555,34 +585,28 @@ export default function Chat() {
                 </div>
               )}
 
-              {/* Message Input */}
+              {/* Input Bar */}
               <div style={{
                 padding: '10px 14px', borderTop: '1px solid #EDE8FF',
-                background: '#fff', display: 'flex', alignItems: 'flex-end', gap: 8,
-                position: 'relative'
+                background: '#fff', display: 'flex', alignItems: 'flex-end', gap: 8
               }}>
-                {/* Image upload */}
                 <input ref={fileInputRef} type="file" accept="image/*"
                   onChange={handleImageSelect} style={{ display: 'none' }} />
                 <button onClick={() => fileInputRef.current?.click()}
                   style={{
                     width: 36, height: 36, borderRadius: '50%', border: 'none',
                     background: '#F3F0FF', cursor: 'pointer', fontSize: '1rem',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    flexShrink: 0
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
                   }}>📸</button>
 
-                {/* Emoji button */}
                 <button onClick={() => setShowEmoji(prev => !prev)}
                   style={{
                     width: 36, height: 36, borderRadius: '50%', border: 'none',
                     background: showEmoji ? '#EDE8FF' : '#F3F0FF',
                     cursor: 'pointer', fontSize: '1rem',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    flexShrink: 0
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
                   }}>😊</button>
 
-                {/* Text input */}
                 <textarea
                   value={newMessage}
                   onChange={e => setNewMessage(e.target.value)}
@@ -597,19 +621,15 @@ export default function Chat() {
                   }}
                 />
 
-                {/* Send button */}
-                <button
-                  onClick={sendMessage}
+                <button onClick={sendMessage}
                   disabled={sending || (!newMessage.trim() && !selectedImage)}
                   style={{
                     width: 38, height: 38, borderRadius: '50%', border: 'none',
                     background: (sending || (!newMessage.trim() && !selectedImage))
-                      ? '#EDE8FF'
-                      : 'linear-gradient(135deg, #FF6B35, #6C4BF6)',
+                      ? '#EDE8FF' : 'linear-gradient(135deg, #FF6B35, #6C4BF6)',
                     cursor: (sending || (!newMessage.trim() && !selectedImage)) ? 'default' : 'pointer',
                     fontSize: '1rem', display: 'flex', alignItems: 'center',
-                    justifyContent: 'center', flexShrink: 0,
-                    transition: 'background 0.2s'
+                    justifyContent: 'center', flexShrink: 0, transition: 'background 0.2s'
                   }}>
                   {uploadingImage ? '⏳' : sending ? '...' : '🐾'}
                 </button>
