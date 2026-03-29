@@ -104,14 +104,18 @@ const postsChannel = supabase
   }
 
   const fetchPosts = async () => {
-    const { data: postsData } = await supabase
-      .from('posts')
-      .select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id)')
-      .eq('hidden', false)
-      .order('created_at', { ascending: false })
-      .limit(20)
-    setPosts(postsData || [])
-  }
+  const { data: postsData } = await supabase
+    .from('posts')
+    .select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id)')
+    .order('created_at', { ascending: false })
+    .limit(20)
+
+  // Filter out posts this user has hidden locally
+  const hiddenPosts = JSON.parse(localStorage.getItem('hidden_posts') || '[]')
+  const filtered = (postsData || []).filter(p => !hiddenPosts.includes(p.id))
+
+  setPosts(filtered)
+}
 
   const fetchComments = async (postId) => {
     const { data } = await supabase
@@ -365,17 +369,47 @@ const postsChannel = supabase
   }
 
   const handleDeletePost = async (post) => {
-    if (!confirm('Delete this post?')) return
-    await supabase.from('posts').delete().eq('id', post.id)
-    setPosts(prev => prev.filter(p => p.id !== post.id))
-    setOpenMenu(null)
+  if (!confirm('Are you sure you want to delete this post?')) return
+
+  // Double check it's their own post
+  if (post.pets?.user_id !== user.id) {
+    alert('You can only delete your own posts!')
+    return
   }
 
-  const handleHidePost = async (post) => {
-    await supabase.from('posts').update({ hidden: true }).eq('id', post.id)
-    setPosts(prev => prev.filter(p => p.id !== post.id))
-    setOpenMenu(null)
+  const { error } = await supabase
+    .from('posts')
+    .delete()
+    .eq('id', post.id)
+    .eq('pet_id', pet.id) // extra safety — only delete if it belongs to my pet
+
+  if (error) {
+    console.error('Delete error:', error)
+    alert('Could not delete post. Please try again.')
+    return
   }
+
+  // Remove from UI only after confirmed deletion
+  setPosts(prev => prev.filter(p => p.id !== post.id))
+  setOpenMenu(null)
+}
+
+  // Store hidden posts in localStorage — only hides for THIS user, not deleted
+const handleHidePost = (post) => {
+  // Never hide your own posts
+  if (post.pets?.user_id === user.id) return
+
+  // Save hidden post IDs in localStorage so it persists
+  const hiddenPosts = JSON.parse(localStorage.getItem('hidden_posts') || '[]')
+  if (!hiddenPosts.includes(post.id)) {
+    hiddenPosts.push(post.id)
+    localStorage.setItem('hidden_posts', JSON.stringify(hiddenPosts))
+  }
+
+  // Remove from current user's feed view only
+  setPosts(prev => prev.filter(p => p.id !== post.id))
+  setOpenMenu(null)
+}
 
   const handleAddFriend = async (otherPet) => {
     if (!user || !pet) return
