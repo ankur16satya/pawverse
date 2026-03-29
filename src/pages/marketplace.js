@@ -285,7 +285,7 @@ export default function Marketplace() {
                 Where are you located?
               </div>
               <p style={{ color: '#6B7280', fontSize: '0.85rem', marginTop: 6 }}>
-                We'll show you products & services available near you — just like Swiggy! 🐾
+                We'll show you products & services available near you! 🐾
               </p>
             </div>
 
