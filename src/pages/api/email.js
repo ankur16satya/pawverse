@@ -42,7 +42,7 @@ export default async function handler(req, res) {
 
     else if (trigger === 'APPROVED') {
        // Send Payment link to client
-       const paymentLink = `http://localhost:3000/pay/${appointmentDetails.appointmentId}`;
+       const paymentLink = `https://pawverse-gray.vercel.app/pay/${appointmentDetails.appointmentId}`;
        await transporter.sendMail({
         from: '"Pawverse" <ankur16satya@gmail.com>', // ⚠️ Replace
         to: clientEmail,
