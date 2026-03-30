@@ -135,7 +135,7 @@ export default function ListingDetail() {
            headers: { 'Content-Type': 'application/json' },
            body: JSON.stringify({
              trigger: 'NEW_BOOKING',
-             adminEmail: 'your_pawverse_email@gmail.com', // ⚠️ REPLACE THIS
+             adminEmail: 'ankur16satya@gmail.com', // ⚠️ REPLACE THIS
              clientEmail: user.email, 
              // THIS NOW PULLS THE DOCTOR'S REAL SAVED EMAIL!
              doctorEmail: listing.contact_email || 'your_pawverse_email@gmail.com', 

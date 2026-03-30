@@ -15,8 +15,8 @@ export default function PaymentPage() {
   const [toast, setToast] = useState('')
 
   // ⚠️ REPLACE THIS WITH YOUR ACTUAL ADMIN EMAIL AND UPI ID!
-  const ADMIN_EMAIL = 'your_pawverse_email@gmail.com' 
-  const ADMIN_UPI_ID = 'pawverse@ybl' // Or any UPI ID you want payments to go to
+  const ADMIN_EMAIL = 'ankur16satya@gmail.com' 
+  const ADMIN_UPI_ID = 'ankur16satya-2@okicici' // Or any UPI ID you want payments to go to
 
   useEffect(() => { if (id) init() }, [id])
 
