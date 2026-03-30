@@ -121,7 +121,7 @@ export default function DoctorDashboard() {
     setSubmitting(false)
   }
 
-  const updateAppointmentStatus = async (appt, status) => {
+   const updateAppointmentStatus = async (appt, status) => {
     try {
       const { error } = await supabase.from('appointments').update({ status }).eq('id', appt.id)
       if (error) throw error
@@ -133,9 +133,12 @@ export default function DoctorDashboard() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           trigger: status === 'confirmed' ? 'APPROVED' : 'REJECTED',
-          adminEmail: 'your_pawverse_email@gmail.com', // ⚠️ REPLACE
+          adminEmail: 'ankur16satya@gmail.com', // ⚠️ REPLACE
           doctorEmail: user.email, 
-          clientEmail: 'client_placeholder@gmail.com', // Client email needs to be pulled similar to this in the future
+
+          // ⚠️ PULLS THE REAL CLIENT EMAIL NOW:
+          clientEmail: appt.client_email, // Real email stored in Step 2!
+
           appointmentDetails: {
             appointmentId: appt.id, doctorName: form.name, clientName: appt.pets?.owner_name,
             date: appt.date, time: appt.time_slot, fees: form.price
@@ -145,6 +148,7 @@ export default function DoctorDashboard() {
 
     } catch (err) { alert('Failed to update status. Error: ' + err.message) }
   }
+
 
   if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontSize: '2rem' }}>🐾</div>
 

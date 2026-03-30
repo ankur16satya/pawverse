@@ -114,14 +114,15 @@ export default function ListingDetail() {
     targetDate.setDate(today.getDate() + offset)
     const bookingDateString = targetDate.toISOString().split('T')[0]
 
-    const { error } = await supabase.from('appointments').insert({
+   const { data: newAppt, error } = await supabase.from('appointments').insert({
       listing_id: listing.id,
       client_id: user.id,
       pet_id: pet.id,
       date: bookingDateString,
       time_slot: selectedSlot,
-      status: 'pending'
-    })
+      status: 'pending',
+      client_email: user.email // ⚠️ Added this line!
+    }).select().single()
 
     if (!error) {
        showToast('✅ Appointment Request Sent!')
