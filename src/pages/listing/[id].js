@@ -99,22 +99,19 @@ export default function ListingDetail() {
   const images = getAllImages()
 
   const meantForList = listing.meant_for_list?.length ? listing.meant_for_list : listing.meant_for ? [listing.meant_for] : []
-    const bookAppointment = async () => {
+     const bookAppointment = async () => {
     if (!user || !pet) { alert('You must be logged in with a pet profile to book!'); return }
     if (!selectedDay || !selectedSlot) { alert('Please select a day and a time slot!'); return }
     setAddingToCart(true)
     
-    // Calculate the actual calendar date for the selected day of the week
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
     const today = new Date()
     const targetDayIndex = days.indexOf(selectedDay)
     let offset = targetDayIndex - today.getDay()
-    if (offset < 0) offset += 7 // Move to next week if day already passed
+    if (offset < 0) offset += 7 
     
     const targetDate = new Date(today)
     targetDate.setDate(today.getDate() + offset)
-
-    // Format the date properly
     const bookingDateString = targetDate.toISOString().split('T')[0]
 
     const { error } = await supabase.from('appointments').insert({
@@ -131,16 +128,16 @@ export default function ListingDetail() {
        setSelectedDay(null)
        setSelectedSlot(null)
 
-       // ⚠️ THE NEW EMAIL TRIGGER CODE IS RIGHT HERE!
        try {
          await fetch('/api/email', {
            method: 'POST',
            headers: { 'Content-Type': 'application/json' },
            body: JSON.stringify({
              trigger: 'NEW_BOOKING',
-             adminEmail: 'ankur16satya@gmail.com', // ⚠️ REPLACE THIS with Admin email
-             clientEmail: user.email, // Automatically pulls logged-in user's email
-             doctorEmail: 'doctor_placeholder@gmail.com', // Placeholder
+             adminEmail: 'your_pawverse_email@gmail.com', // ⚠️ REPLACE THIS
+             clientEmail: user.email, 
+             // THIS NOW PULLS THE DOCTOR'S REAL SAVED EMAIL!
+             doctorEmail: listing.contact_email || 'your_pawverse_email@gmail.com', 
              appointmentDetails: {
                doctorName: listing.name,
                clientName: pet.owner_name,
@@ -149,16 +146,12 @@ export default function ListingDetail() {
              }
            })
          })
-       } catch (err) {
-         console.warn('Booking saved, but failed to send email.', err)
-       }
+       } catch (err) { console.warn('Failed to send email.', err) }
 
-    } else { 
-       alert('Failed to request appointment') 
-    }
-    
+    } else { alert('Failed to request appointment') }
     setAddingToCart(false)
   }
+
 
 
   return (
