@@ -17,8 +17,18 @@ export default function ListingDetail() {
   const [toast, setToast] = useState('')
   const [selectedDay, setSelectedDay] = useState(null)
   const [selectedSlot, setSelectedSlot] = useState(null)
+  const [paymentLoading, setPaymentLoading] = useState(false)
 
   useEffect(() => { if (id) init() }, [id])
+
+  // Load Razorpay script
+  useEffect(() => {
+    const script = document.createElement('script')
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    script.async = true
+    document.body.appendChild(script)
+    return () => document.body.removeChild(script)
+  }, [])
 
   const init = async () => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -67,9 +77,121 @@ export default function ListingDetail() {
     setAddingToCart(false)
   }
 
+  const handleBookAppointment = async () => {
+    if (!user || !pet) { alert('You must be logged in with a pet profile!'); return }
+    if (!selectedDay || !selectedSlot) { alert('Please select a day and time slot!'); return }
+
+    setPaymentLoading(true)
+
+    try {
+      // Calculate appointment date
+      const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+      const today = new Date()
+      const targetDayIndex = days.indexOf(selectedDay)
+      let offset = targetDayIndex - today.getDay()
+      if (offset < 0) offset += 7
+      const targetDate = new Date(today)
+      targetDate.setDate(today.getDate() + offset)
+      const bookingDate = targetDate.toISOString().split('T')[0]
+
+      // Step 1 — Create Razorpay order
+      const orderRes = await fetch('/api/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: listing.price,
+          receipt: `appt_${user.id}_${Date.now()}`
+        })
+      })
+      const orderData = await orderRes.json()
+      if (!orderData.orderId) throw new Error('Failed to create payment order')
+
+      // Step 2 — Open Razorpay checkout
+      const options = {
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_SXQVa1h8dFUHJm',
+        amount: orderData.amount,
+        currency: orderData.currency,
+        name: 'PawVerse',
+        description: `Appointment with ${listing.name}`,
+        image: '/favicon.ico',
+        order_id: orderData.orderId,
+        prefill: {
+          name: pet.owner_name,
+          email: user.email,
+        },
+        theme: { color: '#FF6B35' },
+
+        handler: async (response) => {
+          // Step 3 — Verify payment on server + save appointment + send emails
+          showToast('⏳ Verifying payment...')
+          try {
+            const verifyRes = await fetch('/api/verify-payment', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                appointmentData: {
+                  listing_id: listing.id,
+                  client_id: user.id,
+                  pet_id: pet.id,
+                  date: bookingDate,
+                  time_slot: selectedSlot,
+                  client_email: user.email,
+                  client_name: pet.owner_name,
+                  pet_name: pet.pet_name,
+                  amount: listing.price,
+                  doctorName: listing.name,
+                  doctorEmail: listing.contact_email || 'doctor@pawverse.app',
+                }
+              })
+            })
+
+            const verifyData = await verifyRes.json()
+            if (verifyData.success) {
+              setPaymentLoading(false)
+              // Show success screen
+              setToast('')
+              showSuccessModal(bookingDate, selectedSlot)
+            } else {
+              throw new Error('Payment verification failed')
+            }
+          } catch (err) {
+            setPaymentLoading(false)
+            alert('Payment verification failed. Please contact support.')
+          }
+        },
+
+        modal: {
+          ondismiss: () => {
+            setPaymentLoading(false)
+            showToast('Payment cancelled')
+          }
+        }
+      }
+
+      const rzp = new window.Razorpay(options)
+      rzp.open()
+
+    } catch (err) {
+      console.error(err)
+      setPaymentLoading(false)
+      alert('Failed to initiate payment. Please try again.')
+    }
+  }
+
+  const [successData, setSuccessData] = useState(null)
+
+  const showSuccessModal = (date, slot) => {
+    setSuccessData({ date, slot })
+    setSelectedDay(null)
+    setSelectedSlot(null)
+  }
+
   const showToast = (msg) => {
     setToast(msg)
-    setTimeout(() => setToast(''), 3000)
+    setTimeout(() => setToast(''), 4000)
   }
 
   const timeAgo = (ts) => {
@@ -97,63 +219,7 @@ export default function ListingDetail() {
   )
 
   const images = getAllImages()
-
   const meantForList = listing.meant_for_list?.length ? listing.meant_for_list : listing.meant_for ? [listing.meant_for] : []
-     const bookAppointment = async () => {
-    if (!user || !pet) { alert('You must be logged in with a pet profile to book!'); return }
-    if (!selectedDay || !selectedSlot) { alert('Please select a day and a time slot!'); return }
-    setAddingToCart(true)
-    
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-    const today = new Date()
-    const targetDayIndex = days.indexOf(selectedDay)
-    let offset = targetDayIndex - today.getDay()
-    if (offset < 0) offset += 7 
-    
-    const targetDate = new Date(today)
-    targetDate.setDate(today.getDate() + offset)
-    const bookingDateString = targetDate.toISOString().split('T')[0]
-
-   const { data: newAppt, error } = await supabase.from('appointments').insert({
-      listing_id: listing.id,
-      client_id: user.id,
-      pet_id: pet.id,
-      date: bookingDateString,
-      time_slot: selectedSlot,
-      status: 'pending',
-      client_email: user.email // ⚠️ Added this line!
-    }).select().single()
-
-    if (!error) {
-       showToast('✅ Appointment Request Sent!')
-       setSelectedDay(null)
-       setSelectedSlot(null)
-
-       try {
-         await fetch('/api/email', {
-           method: 'POST',
-           headers: { 'Content-Type': 'application/json' },
-           body: JSON.stringify({
-             trigger: 'NEW_BOOKING',
-             adminEmail: 'ankur16satya@gmail.com', // ⚠️ REPLACE THIS
-             clientEmail: user.email, 
-             // THIS NOW PULLS THE DOCTOR'S REAL SAVED EMAIL!
-             doctorEmail: listing.contact_email || 'your_pawverse_email@gmail.com', 
-             appointmentDetails: {
-               doctorName: listing.name,
-               clientName: pet.owner_name,
-               date: bookingDateString,
-               time: selectedSlot
-             }
-           })
-         })
-       } catch (err) { console.warn('Failed to send email.', err) }
-
-    } else { alert('Failed to request appointment') }
-    setAddingToCart(false)
-  }
-
-
 
   return (
     <div style={{ background: '#FFFBF7', minHeight: '100vh' }}>
@@ -165,14 +231,55 @@ export default function ListingDetail() {
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, cursor: 'zoom-out' }}>
           <button onClick={() => setLightboxImg(null)}
             style={{ position: 'absolute', top: 18, right: 22, background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', fontSize: '1.5rem', cursor: 'pointer', borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
-          <img src={lightboxImg} alt="full"
-            onClick={e => e.stopPropagation()}
+          <img src={lightboxImg} alt="full" onClick={e => e.stopPropagation()}
             style={{ maxWidth: '90vw', maxHeight: '88vh', borderRadius: 16, objectFit: 'contain' }} />
         </div>
       )}
 
+      {/* Success Modal */}
+      {successData && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: '#fff', borderRadius: 24, padding: 36, maxWidth: 440, width: '100%', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            <div style={{ fontSize: '4rem', marginBottom: 12 }}>🎉</div>
+            <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.6rem', color: '#1E1347', marginBottom: 8 }}>
+              Appointment Confirmed!
+            </div>
+            <p style={{ color: '#6B7280', fontSize: '0.9rem', marginBottom: 20 }}>
+              Your payment was successful and your appointment is confirmed!
+            </p>
+            <div style={{ background: '#F9F5FF', borderRadius: 14, padding: '16px 20px', marginBottom: 20, textAlign: 'left' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ color: '#6B7280', fontSize: '0.85rem' }}>🩺 Doctor</span>
+                <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>{listing.name}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ color: '#6B7280', fontSize: '0.85rem' }}>📅 Date</span>
+                <span style={{ fontWeight: 700, color: '#6C4BF6', fontSize: '0.85rem' }}>
+                  {new Date(successData.date).toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ color: '#6B7280', fontSize: '0.85rem' }}>⏰ Time</span>
+                <span style={{ fontWeight: 700, color: '#6C4BF6', fontSize: '0.85rem' }}>{successData.slot}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6B7280', fontSize: '0.85rem' }}>💳 Amount Paid</span>
+                <span style={{ fontWeight: 700, color: '#22C55E', fontSize: '0.85rem' }}>₹{listing.price} ✅</span>
+              </div>
+            </div>
+            <div style={{ background: '#E8F8E8', borderRadius: 10, padding: '10px 14px', marginBottom: 20, fontSize: '0.8rem', color: '#374151' }}>
+              📧 Confirmation emails have been sent to you, the doctor, and our admin!
+            </div>
+            <button
+              onClick={() => { setSuccessData(null); router.push('/marketplace') }}
+              style={{ width: '100%', padding: '12px', border: 'none', borderRadius: 12, background: 'linear-gradient(135deg,#FF6B35,#6C4BF6)', color: '#fff', fontFamily: 'Nunito, sans-serif', fontWeight: 800, fontSize: '0.95rem', cursor: 'pointer' }}>
+              Back to Marketplace 🐾
+            </button>
+          </div>
+        </div>
+      )}
+
       <div style={{ maxWidth: 900, margin: '70px auto 0', padding: '20px 14px 40px' }}>
-        {/* Back button */}
         <button onClick={() => router.push('/marketplace')}
           style={{ background: 'none', border: 'none', color: '#6C4BF6', fontFamily: 'Nunito, sans-serif', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
           ← Back to Marketplace
@@ -182,30 +289,18 @@ export default function ListingDetail() {
 
           {/* LEFT — Images */}
           <div>
-            {/* Main image */}
-            <div
-              onClick={() => images[activeImg] && setLightboxImg(images[activeImg])}
+            <div onClick={() => images[activeImg] && setLightboxImg(images[activeImg])}
               style={{ borderRadius: 16, overflow: 'hidden', background: '#F3F0FF', height: 320, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: images[activeImg] ? 'zoom-in' : 'default', marginBottom: 10 }}>
               {images[activeImg]
-                ? <img src={images[activeImg]} alt="product"
-                    style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                : <span style={{ fontSize: '5rem' }}>📦</span>
-              }
+                ? <img src={images[activeImg]} alt="product" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                : <span style={{ fontSize: '5rem' }}>📦</span>}
             </div>
-
-            {/* Thumbnails */}
             {images.length > 1 && (
               <div style={{ display: 'flex', gap: 8 }}>
                 {images.map((img, i) => (
-                  <div key={i}
-                    onClick={() => setActiveImg(i)}
-                    style={{
-                      width: 72, height: 72, borderRadius: 10, overflow: 'hidden',
-                      border: `2.5px solid ${activeImg === i ? '#FF6B35' : '#EDE8FF'}`,
-                      cursor: 'pointer', background: '#F3F0FF', flexShrink: 0
-                    }}>
-                    <img src={img} alt={`thumb-${i}`}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <div key={i} onClick={() => setActiveImg(i)}
+                    style={{ width: 72, height: 72, borderRadius: 10, overflow: 'hidden', border: `2.5px solid ${activeImg === i ? '#FF6B35' : '#EDE8FF'}`, cursor: 'pointer', background: '#F3F0FF', flexShrink: 0 }}>
+                    <img src={img} alt={`thumb-${i}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   </div>
                 ))}
               </div>
@@ -214,72 +309,40 @@ export default function ListingDetail() {
 
           {/* RIGHT — Details */}
           <div>
-            {/* Category + tags */}
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-              <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 800, background: '#F3F0FF', color: '#6C4BF6' }}>
-                {listing.category}
-              </span>
+              <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 800, background: '#F3F0FF', color: '#6C4BF6' }}>{listing.category}</span>
               {listing.food_type && (
                 <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 800, background: listing.food_type === 'veg' ? '#E8F8E8' : '#FFE8E8', color: listing.food_type === 'veg' ? '#22C55E' : '#FF4757' }}>
                   {listing.food_type === 'veg' ? '🟢 Veg' : '🔴 Non-Veg'}
                 </span>
               )}
-              {listing.is_service && (
-                <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 800, background: '#FFFBE8', color: '#FF6B35' }}>
-                  🩺 Service
-                </span>
-              )}
+              {listing.is_service && <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 800, background: '#FFFBE8', color: '#FF6B35' }}>🩺 Service</span>}
             </div>
 
-            <h1 style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.6rem', color: '#1E1347', marginBottom: 4 }}>
-              {listing.name}
-            </h1>
+            <h1 style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.6rem', color: '#1E1347', marginBottom: 4 }}>{listing.name}</h1>
+            {listing.brand && <div style={{ fontSize: '0.85rem', color: '#6B7280', marginBottom: 8 }}>Service Type: <strong>{listing.brand}</strong></div>}
 
-            {listing.brand && (
-              <div style={{ fontSize: '0.85rem', color: '#6B7280', marginBottom: 8 }}>Brand: <strong>{listing.brand}</strong></div>
-            )}
-
-            {/* Price */}
             <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '2rem', color: '#FF6B35', marginBottom: 12 }}>
               ₹{listing.price}
-              {listing.is_service && listing.duration && (
-                <span style={{ fontSize: '0.9rem', color: '#6B7280', fontWeight: 400, marginLeft: 8 }}>/ {listing.duration}</span>
-              )}
+              {listing.is_service && listing.duration && <span style={{ fontSize: '0.9rem', color: '#6B7280', fontWeight: 400, marginLeft: 8 }}>/ {listing.duration}</span>}
             </div>
 
-            {/* Meant for */}
             {meantForList.length > 0 && (
               <div style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: '0.78rem', color: '#6B7280', fontWeight: 700, marginBottom: 4 }}>🐾 Meant For</div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {meantForList.map(m => (
-                    <span key={m} style={{ padding: '4px 10px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 700, background: '#FFE8F0', color: '#FF6B9D' }}>
-                      {m}
-                    </span>
-                  ))}
+                  {meantForList.map(m => <span key={m} style={{ padding: '4px 10px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 700, background: '#FFE8F0', color: '#FF6B9D' }}>{m}</span>)}
                 </div>
               </div>
             )}
 
-            {/* Service type */}
-            {listing.is_service && listing.brand && (
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: '0.78rem', color: '#6B7280', fontWeight: 700, marginBottom: 4 }}>🩺 Service Type</div>
-                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1E1347' }}>{listing.brand}</div>
-              </div>
-            )}
-
-            {/* Location */}
             <div style={{ marginBottom: 12, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-              <span style={{ fontSize: '1rem' }}>📍</span>
-              <div>
-                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1E1347' }}>
-                  {[listing.address, listing.city, listing.state, listing.pincode].filter(Boolean).join(', ')}
-                </div>
+              <span>📍</span>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1E1347' }}>
+                {[listing.address, listing.city, listing.state, listing.pincode].filter(Boolean).join(', ')}
               </div>
             </div>
 
-            {/* Description */}
             {listing.description && (
               <div style={{ marginBottom: 16, background: '#F9F5FF', borderRadius: 12, padding: '12px 14px' }}>
                 <div style={{ fontSize: '0.78rem', color: '#6B7280', fontWeight: 700, marginBottom: 4 }}>📝 Description</div>
@@ -287,46 +350,38 @@ export default function ListingDetail() {
               </div>
             )}
 
-            {/* Seller */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#F9F5FF', borderRadius: 12, marginBottom: 16 }}>
               <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#FFE8F0', border: '2px solid #FF6B35', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', overflow: 'hidden' }}>
-                {listing.pets?.avatar_url
-                  ? <img src={listing.pets.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  : listing.pets?.emoji || '🐾'}
+                {listing.pets?.avatar_url ? <img src={listing.pets.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : listing.pets?.emoji || '🐾'}
               </div>
               <div>
                 <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1E1347' }}>{listing.pets?.owner_name || 'Seller'}</div>
                 <div style={{ fontSize: '0.72rem', color: '#6B7280' }}>Listed {timeAgo(listing.created_at)}</div>
               </div>
               {listing.pets?.user_id && listing.pets.user_id !== user?.id && (
-                <button
-                  onClick={() => router.push(`/user/${listing.pets.user_id}`)}
+                <button onClick={() => router.push(`/user/${listing.pets.user_id}`)}
                   style={{ marginLeft: 'auto', background: '#F3F0FF', border: 'none', borderRadius: 8, padding: '5px 12px', color: '#6C4BF6', fontFamily: 'Nunito, sans-serif', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}>
                   View Profile
                 </button>
               )}
             </div>
 
-                       {/* Action buttons & Doctor Schedule */}
+            {/* Action */}
             {!listing.is_service ? (
               <button onClick={addToCart} disabled={addingToCart || cartSuccess}
-                style={{
-                  width: '100%', padding: '14px', border: 'none', borderRadius: 14,
-                  background: cartSuccess ? '#22C55E' : 'linear-gradient(135deg,#FF6B35,#6C4BF6)',
-                  color: '#fff', fontFamily: 'Nunito, sans-serif', fontWeight: 800,
-                  fontSize: '1rem', cursor: addingToCart || cartSuccess ? 'default' : 'pointer', transition: 'all 0.3s'
-                }}>
+                style={{ width: '100%', padding: '14px', border: 'none', borderRadius: 14, background: cartSuccess ? '#22C55E' : 'linear-gradient(135deg,#FF6B35,#6C4BF6)', color: '#fff', fontFamily: 'Nunito, sans-serif', fontWeight: 800, fontSize: '1rem', cursor: addingToCart || cartSuccess ? 'default' : 'pointer', transition: 'all 0.3s' }}>
                 {cartSuccess ? '✅ Added to Cart!' : addingToCart ? '⏳ Adding...' : '🛒 Add to Cart'}
               </button>
             ) : (
               <div>
-                {listing.schedule && Object.keys(listing.schedule).length > 0 && (
+                {/* Schedule Picker */}
+                {listing.schedule && Object.keys(listing.schedule).filter(d => listing.schedule[d]?.length > 0).length > 0 && (
                   <div style={{ background: '#fff', border: '1px solid #EDE8FF', borderRadius: 14, padding: 14, marginBottom: 14 }}>
-                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#1E1347', marginBottom: 8 }}>📅 Check Availability</div>
-                    
-                    {/* Day Picker */}
+                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#1E1347', marginBottom: 8 }}>📅 Select Appointment Slot</div>
+
+                    {/* Day picker */}
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-                      {Object.keys(listing.schedule).filter(day => listing.schedule[day].length > 0).map(day => (
+                      {Object.keys(listing.schedule).filter(day => listing.schedule[day]?.length > 0).map(day => (
                         <button key={day} onClick={() => { setSelectedDay(day); setSelectedSlot(null) }}
                           style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid', borderColor: selectedDay === day ? '#FF6B35' : '#E5E7EB', background: selectedDay === day ? '#FFF0E8' : '#fff', color: selectedDay === day ? '#FF6B35' : '#6B7280', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>
                           {day.substring(0, 3)}
@@ -334,7 +389,7 @@ export default function ListingDetail() {
                       ))}
                     </div>
 
-                    {/* Time Slot Picker */}
+                    {/* Time slot picker */}
                     {selectedDay && (
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         {listing.schedule[selectedDay].map(slot => (
@@ -345,18 +400,34 @@ export default function ListingDetail() {
                         ))}
                       </div>
                     )}
+
+                    {selectedDay && selectedSlot && (
+                      <div style={{ marginTop: 10, background: '#E8F8E8', borderRadius: 8, padding: '8px 12px', fontSize: '0.8rem', color: '#22C55E', fontWeight: 700 }}>
+                        ✅ Selected: {selectedDay} at {selectedSlot}
+                      </div>
+                    )}
                   </div>
                 )}
-                
-                <button onClick={bookAppointment} disabled={addingToCart}
+
+                {/* Pay & Book button */}
+                <button onClick={handleBookAppointment}
+                  disabled={paymentLoading || !selectedDay || !selectedSlot}
                   style={{
                     width: '100%', padding: '14px', border: 'none', borderRadius: 14,
-                    background: 'linear-gradient(135deg,#FF6B35,#6C4BF6)',
-                    color: '#fff', fontFamily: 'Nunito, sans-serif', fontWeight: 800,
-                    fontSize: '1rem', cursor: 'pointer', opacity: addingToCart ? 0.7 : 1
+                    background: (!selectedDay || !selectedSlot) ? '#EDE8FF' : 'linear-gradient(135deg,#FF6B35,#6C4BF6)',
+                    color: (!selectedDay || !selectedSlot) ? '#9CA3AF' : '#fff',
+                    fontFamily: 'Nunito, sans-serif', fontWeight: 800, fontSize: '1rem',
+                    cursor: (paymentLoading || !selectedDay || !selectedSlot) ? 'default' : 'pointer',
+                    opacity: paymentLoading ? 0.7 : 1, transition: 'all 0.3s'
                   }}>
-                  {addingToCart ? '⏳ Requesting...' : '📅 Request Appointment'}
+                  {paymentLoading ? '⏳ Processing Payment...' : `💳 Pay ₹${listing.price} & Book`}
                 </button>
+
+                <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: '0.75rem', color: '#9CA3AF' }}>
+                  <span>🔒 Secured by Razorpay</span>
+                  <span>•</span>
+                  <span>UPI • Cards • NetBanking</span>
+                </div>
               </div>
             )}
           </div>
