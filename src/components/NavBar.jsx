@@ -22,6 +22,7 @@ export default function NavBar({ user, pet }) {
   const [unreadCount, setUnreadCount] = useState(0)
   const [pendingFriendCount, setPendingFriendCount] = useState(0)
   const [unreadMsgCount, setUnreadMsgCount] = useState(0)
+  const [cartCount, setCartCount] = useState(0)
   const notifRef = useRef(null)
   const channelRef = useRef(null)
   const initializedRef = useRef(false)
@@ -31,15 +32,18 @@ export default function NavBar({ user, pet }) {
     initializedRef.current = true
 
     fetchAll()
+    
     setupRealtime()
 
     return () => {
+      
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current)
         channelRef.current = null
       }
       initializedRef.current = false
     }
+    
   }, [user?.id])
 
   useEffect(() => {
@@ -58,6 +62,12 @@ export default function NavBar({ user, pet }) {
       fetchPendingFriendRequests(),
       fetchUnreadMessages(),
     ])
+    // Fetch cart count
+const { count } = await supabase
+  .from('cart')
+  .select('*', { count: 'exact', head: true })
+  .eq('user_id', user.id)
+setCartCount(count || 0)
   }
 
   const fetchNotifications = async () => {
@@ -109,6 +119,26 @@ export default function NavBar({ user, pet }) {
     const channel = supabase
       .channel(`navbar-realtime-${user.id}-${Date.now()}`)
 
+      // Cart INSERT — increase badge
+.on('postgres_changes', {
+  event: 'INSERT',
+  schema: 'public',
+  table: 'cart',
+  filter: `user_id=eq.${user.id}`,
+}, () => {
+  setCartCount(prev => prev + 1)
+})
+
+// Cart DELETE — decrease badge
+.on('postgres_changes', {
+  event: 'DELETE',
+  schema: 'public',
+  table: 'cart',
+}, (payload) => {
+  if (payload.old?.user_id === user.id) {
+    setCartCount(prev => Math.max(0, prev - 1))
+  }
+})
       // ── NEW NOTIFICATION received ──
       .on('postgres_changes', {
         event: 'INSERT',
@@ -247,14 +277,15 @@ export default function NavBar({ user, pet }) {
   }
 
   const nav = [
-    { href: '/feed',        icon: '🏠', label: 'Feed' },
-    { href: '/marketplace', icon: '🛍️', label: 'Market' },
-    { href: '/health',      icon: '🩺', label: 'Health' },
-    { href: '/chat',        icon: '💬', label: 'Chat' },
-    { href: '/adopt',       icon: '🏠', label: 'Adopt' },
-    { href: '/coins',       icon: '🪙', label: 'Coins' },
-    { href: '/friends',     icon: '👫', label: 'Friends' },
-  ]
+  { href: '/feed',        icon: '🏠', label: 'Feed' },
+  { href: '/marketplace', icon: '🛍️', label: 'Market' },
+  { href: '/cart',        icon: '🛒', label: 'Cart' },
+  { href: '/health',      icon: '🩺', label: 'Health' },
+  { href: '/chat',        icon: '💬', label: 'Chat' },
+  { href: '/adopt',       icon: '🫶', label: 'Adopt' },
+  { href: '/coins',       icon: '🪙', label: 'Coins' },
+  { href: '/friends',     icon: '👫', label: 'Friends' },
+]
 
   return (
     <nav style={{
@@ -311,6 +342,18 @@ export default function NavBar({ user, pet }) {
               </div>
             )}
 
+{/* Cart badge */}
+{n.href === '/cart' && cartCount > 0 && (
+  <div style={{
+    position: 'absolute', top: 4, right: 4,
+    minWidth: 16, height: 16, background: '#FF6B35',
+    borderRadius: '50%', border: '2px solid #fff',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: '0.6rem', fontWeight: 800, color: '#fff'
+  }}>
+    {cartCount > 9 ? '9+' : cartCount}
+  </div>
+)}
             {/* Friends pending badge */}
             {n.href === '/friends' && pendingFriendCount > 0 && (
               <div style={{
