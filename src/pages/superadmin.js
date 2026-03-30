@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
 
 // ⚠️ List all authorized super admin emails here:
-const SUPER_ADMINS = ['ankur16satya@gmail.com,sharmasiddharth269@gmail.com']
+const SUPER_ADMINS = ['ankur16satya@gmail.com', 'sharmasiddharth269@gmail.com']
 
 export default function SuperAdmin() {
   const router = useRouter()
