@@ -384,9 +384,9 @@ export default function DoctorDashboard() {
                      <div style={{ width: 180, textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
                        {appt.status === 'pending' && (
                          <>
-                           <button onClick={() => updateAppointmentStatus(appt.id, 'confirmed')}
+                           <button onClick={() => updateAppointmentStatus(appt, 'confirmed')}
                              style={{ padding: '6px 14px', border: 'none', borderRadius: 20, background: '#22C55E', color: '#fff', fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer', width: 100 }}>✓ Accept</button>
-                           <button onClick={() => updateAppointmentStatus(appt.id, 'rejected')}
+                           <button onClick={() => updateAppointmentStatus(appt, 'rejected')}
                              style={{ padding: '6px 14px', border: 'none', borderRadius: 20, background: '#FFEEF0', color: '#FF4757', fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer', width: 100 }}>✕ Reject</button>
                          </>
                        )}
