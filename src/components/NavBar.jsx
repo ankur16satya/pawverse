@@ -1,7 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
-
+import {
+  Home,
+  ShoppingBag,
+  ShoppingCart,
+  HeartPulse,
+  MessageCircle,
+  PawPrint,
+  Coins,
+  Users
+} from "lucide-react"
 // Sound player — defined outside component so it never re-initializes
 const sounds = {}
 const playSound = (type) => {
@@ -277,104 +286,184 @@ setCartCount(count || 0)
   }
 
   const nav = [
-  { href: '/feed',        icon: '🏠', label: 'Feed' },
-  { href: '/marketplace', icon: '🛍️', label: 'Market' },
-  { href: '/cart',        icon: '🛒', label: 'Cart' },
-  { href: '/health',      icon: '🩺', label: 'Health' },
-  { href: '/chat',        icon: '💬', label: 'Chat' },
-  { href: '/adopt',       icon: '🫶', label: 'Adopt' },
-  { href: '/coins',       icon: '🪙', label: 'Coins' },
-  { href: '/friends',     icon: '👫', label: 'Friends' },
+  { href: '/feed',        icon: <Home size={26} />, label: 'Feed' },
+  { href: '/marketplace', icon: <ShoppingBag size={26} />, label: 'Market' },
+  { href: '/health',      icon: <HeartPulse size={26} />, label: 'Health' },
+  { href: '/chat',        icon: <MessageCircle size={26} />, label: 'Chat' },
+  { href: '/adopt',       icon: <PawPrint size={26} />, label: 'Adopt' },
+  { href: '/coins',       icon: <Coins size={26} />, label: 'Coins' },
+  { href: '/friends',     icon: <Users size={26} />, label: 'Friends' },
+  { href: '/cart',        icon: <ShoppingCart size={26} />, label: 'Cart' },
 ]
 
   return (
     <nav style={{
-      position: 'fixed', top: 0, left: 0, right: 0, height: 58,
-      background: '#fff', borderBottom: '1px solid #EDE8FF',
+      position: 'fixed', top: 0, left: 0, right: 0, height: 98,
+      background: 'linear-gradient(135deg, #edeceaff, #a4caf3ff)', borderBottom: '1px solid #EDE8FF',
       boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
-      display: 'flex', alignItems: 'center', padding: '0 16px',
-      zIndex: 1000, gap: 10
+      display: 'flex', alignItems: 'center', padding: '0 6px',
+      zIndex: 1000, gap: 2
     }}>
       {/* Logo */}
-      <div onClick={() => router.push('/feed')}
-        style={{
-          fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.4rem',
-          background: 'linear-gradient(135deg, #FF6B35, #6C4BF6)',
-          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-          cursor: 'pointer', flexShrink: 0
-        }}>
-        🐾 PawVerse
-      </div>
+      <div
+  onClick={() => router.push('/feed')}
+  style={{ cursor: 'pointer', flexShrink: 0 }}
+>
+  <img
+    src="/logo.png"
+    alt="logo"
+    style={{
+      height: 140,
+      width: 'auto',
+      padding: '10px',
+      objectFit: 'contain'
+    }}
+  />
+</div>
 
-      {/* Search */}
-      <input
-        placeholder="🔍  Search pets, posts, vets..."
-        style={{
-          background: '#F3F0FF', border: 'none', borderRadius: 22,
-          padding: '7px 14px', fontSize: '0.85rem', outline: 'none',
-          width: 200, fontFamily: 'Nunito, sans-serif', color: '#1E1347'
-        }}
-      />
+     
 
       {/* Nav links */}
       <div style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: 2 }}>
-        {nav.map(n => (
-          <button key={n.href} onClick={() => router.push(n.href)}
-            title={n.label}
-            style={{
-              padding: '7px 14px', border: 'none', cursor: 'pointer',
-              fontSize: '1.15rem', borderRadius: 10, transition: 'background 0.2s',
-              background: path === n.href ? '#F3F0FF' : 'transparent',
-              position: 'relative'
-            }}>
-            {n.icon}
+       {nav.map(n => (
+  <button
+    key={n.href}
+    onClick={() => router.push(n.href)}
+    title={n.label}
+    style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '10px 14px',
+      border: 'none',
+      cursor: 'pointer',
+      borderRadius: 14,
+      transition: 'all 0.25s ease',
+      position: 'relative',
+      background:
+        path === n.href
+          ? 'linear-gradient(135deg, #FFE8CC, #F0EBFF)'
+          : 'transparent',
+      transform: path === n.href ? 'scale(1.1)' : 'scale(1)',
+      boxShadow:
+        path === n.href
+          ? '0 4px 12px rgba(255,107,53,0.2)'
+          : 'none'
+    }}
+    onMouseEnter={e => {
+      if (path !== n.href) {
+        e.currentTarget.style.background = '#F3F0FF'
+        e.currentTarget.style.transform = 'scale(1.05)'
+      }
+    }}
+    onMouseLeave={e => {
+      if (path !== n.href) {
+        e.currentTarget.style.background = 'transparent'
+        e.currentTarget.style.transform = 'scale(1)'
+      }
+    }}
+  >
+    {/* ICON */}
+    <div style={{
+      fontSize: '1.6rem',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}>
+      {n.icon}
+    </div>
 
-            {/* Chat unread badge */}
-            {n.href === '/chat' && unreadMsgCount > 0 && (
-              <div style={{
-                position: 'absolute', top: 4, right: 4,
-                minWidth: 16, height: 16, background: '#FF4757',
-                borderRadius: '50%', border: '2px solid #fff',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '0.6rem', fontWeight: 800, color: '#fff'
-              }}>
-                {unreadMsgCount > 9 ? '9+' : unreadMsgCount}
-              </div>
-            )}
+    {/* LABEL */}
+    <span style={{
+      fontSize: '0.65rem',
+      marginTop: 3,
+      fontWeight: 700,
+      color: path === n.href ? '#FF6B35' : '#6B7280'
+    }}>
+      {n.label}
+    </span>
 
-{/* Cart badge */}
-{n.href === '/cart' && cartCount > 0 && (
-  <div style={{
-    position: 'absolute', top: 4, right: 4,
-    minWidth: 16, height: 16, background: '#FF6B35',
-    borderRadius: '50%', border: '2px solid #fff',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontSize: '0.6rem', fontWeight: 800, color: '#fff'
-  }}>
-    {cartCount > 9 ? '9+' : cartCount}
-  </div>
-)}
-            {/* Friends pending badge */}
-            {n.href === '/friends' && pendingFriendCount > 0 && (
-              <div style={{
-                position: 'absolute', top: 4, right: 4,
-                minWidth: 16, height: 16, background: '#FF4757',
-                borderRadius: '50%', border: '2px solid #fff',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '0.6rem', fontWeight: 800, color: '#fff'
-              }}>
-                {pendingFriendCount > 9 ? '9+' : pendingFriendCount}
-              </div>
-            )}
+    {/* ACTIVE INDICATOR */}
+    {path === n.href && (
+      <div style={{
+        position: 'absolute',
+        bottom: -4,
+        width: 20,
+        height: 3,
+        background: '#FF6B35',
+        borderRadius: 2
+      }} />
+    )}
 
-            {path === n.href && (
-              <div style={{
-                position: 'absolute', bottom: 0, left: '25%', right: '25%',
-                height: 3, background: '#FF6B35', borderRadius: 2
-              }} />
-            )}
-          </button>
-        ))}
+    {/* Chat badge */}
+    {n.href === '/chat' && unreadMsgCount > 0 && (
+      <div style={{
+        position: 'absolute',
+        top: 4,
+        right: 6,
+        minWidth: 16,
+        height: 16,
+        background: '#FF4757',
+        borderRadius: '50%',
+        border: '2px solid #fff',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '0.6rem',
+        fontWeight: 800,
+        color: '#fff'
+      }}>
+        {unreadMsgCount > 9 ? '9+' : unreadMsgCount}
+      </div>
+    )}
+
+    {/* Cart badge */}
+    {n.href === '/cart' && cartCount > 0 && (
+      <div style={{
+        position: 'absolute',
+        top: 4,
+        right: 6,
+        minWidth: 16,
+        height: 16,
+        background: '#FF6B35',
+        borderRadius: '50%',
+        border: '2px solid #fff',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '0.6rem',
+        fontWeight: 800,
+        color: '#fff'
+      }}>
+        {cartCount > 9 ? '9+' : cartCount}
+      </div>
+    )}
+
+    {/* Friends badge */}
+    {n.href === '/friends' && pendingFriendCount > 0 && (
+      <div style={{
+        position: 'absolute',
+        top: 4,
+        right: 6,
+        minWidth: 16,
+        height: 16,
+        background: '#FF4757',
+        borderRadius: '50%',
+        border: '2px solid #fff',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '0.6rem',
+        fontWeight: 800,
+        color: '#fff'
+      }}>
+        {pendingFriendCount > 9 ? '9+' : pendingFriendCount}
+      </div>
+    )}
+
+  </button>
+))}
       </div>
 
       {/* Right side */}
@@ -389,7 +478,7 @@ setCartCount(count || 0)
           <span style={{ fontSize: '0.85rem' }}>🪙</span>
           <span style={{
             fontFamily: "'Baloo 2', cursive", fontWeight: 800,
-            fontSize: '0.85rem', color: '#FF6B35'
+            fontSize: '1rem', color: '#FF6B35'
           }}>{pet?.paw_coins ?? 0}</span>
         </div>
 
@@ -529,10 +618,10 @@ setCartCount(count || 0)
         {/* Avatar */}
         <div onClick={() => router.push('/profile')}
           style={{
-            width: 34, height: 34, borderRadius: '50%',
+            width: 44, height: 44, borderRadius: '50%',
             background: '#FFE8F0', border: '2.5px solid #FF6B35',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '1.1rem', cursor: 'pointer', overflow: 'hidden'
+            fontSize: '2 rem', cursor: 'pointer', overflow: 'hidden'
           }}>
           {pet?.avatar_url
             ? <img src={pet.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -542,9 +631,9 @@ setCartCount(count || 0)
         {/* Logout */}
         <button onClick={handleLogout}
           style={{
-            background: 'none', border: '1px solid #EDE8FF', borderRadius: 8,
-            padding: '4px 10px', fontSize: '0.75rem', cursor: 'pointer',
-            color: '#6B7280', fontFamily: 'Nunito, sans-serif'
+            background: 'none', border: '1px solid #ff0000ff', borderRadius: 8,
+            padding: '4px 10px', fontSize: '1 rem', cursor: 'pointer',
+            color: '#000000ff', fontFamily: 'Nunito, sans-serif'
           }}>
           Logout
         </button>

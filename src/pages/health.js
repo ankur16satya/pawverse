@@ -35,7 +35,7 @@ export default function Health() {
   const bookVet = () => { setToast('📅 Appointment booked! +100 PawCoins 🪙'); setTimeout(() => setToast(''), 3000) }
 
   return (
-    <div style={{ background: '#FFFBF7', minHeight: '100vh' }}>
+   <div style={{ background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))',padding:'30px', minHeight: '100vh' }}>
       <NavBar user={user} pet={pet} />
       <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 14, maxWidth: 1060, margin: '70px auto 0', padding: 14 }}>
         {/* Sidebar */}
@@ -79,7 +79,7 @@ export default function Health() {
               <button key={k} onClick={() => setTab(k)} style={{
                 padding: '9px 14px', border: 'none', background: 'transparent', cursor: 'pointer',
                 fontFamily: 'Nunito, sans-serif', fontWeight: 700, fontSize: '0.84rem',
-                color: tab === k ? '#FF6B35' : '#6B7280',
+                color: tab === k ? '#ffffffff' : '#000000ff',
                 borderBottom: tab === k ? '3px solid #FF6B35' : '3px solid transparent', marginBottom: -2
               }}>{lb}</button>
             ))}

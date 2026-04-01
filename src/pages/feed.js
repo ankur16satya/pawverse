@@ -448,7 +448,7 @@ const handleHidePost = (post) => {
   )
 
   return (
-    <div style={{ background: '#FFFBF7', minHeight: '100vh' }}>
+    <div style={{ background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))',padding:'30px', minHeight: '100vh',}}>
       <NavBar user={user} pet={pet} />
 
       {/* 🖼️ LIGHTBOX */}
@@ -493,7 +493,7 @@ const handleHidePost = (post) => {
               <div
                 onClick={() => router.push('/profile')}
                 style={{
-                  width: 52, height: 52, borderRadius: '50%', background: '#FFE8F0',
+                  width: 152, height: 152, borderRadius: '50%', background: '#FFE8F0',
                   border: '3px solid #fff', margin: '-26px auto 6px',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '1.7rem', overflow: 'hidden', cursor: 'pointer'

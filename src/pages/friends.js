@@ -274,13 +274,13 @@ export default function Friends() {
   ]
 
   return (
-    <div style={{ background: '#FFFBF7', minHeight: '100vh' }}>
+     <div style={{ background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))',padding:'40px', minHeight: '100vh',}}>
       <NavBar user={user} pet={pet} />
 
-      <div style={{ maxWidth: 900, margin: '70px auto 0', padding: '20px 14px 40px' }}>
+      <div style={{ maxWidth: 900, margin: '70px auto 0', padding: '20px 14px 40px',background: '#fff' }}>
 
         {/* Header */}
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 20}}>
           <h1 style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.8rem', color: '#1E1347' }}>
             👫 Friends
           </h1>

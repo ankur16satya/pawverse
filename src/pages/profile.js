@@ -153,7 +153,7 @@ export default function Profile() {
   )
 
   return (
-    <div style={{ background: '#FFFBF7', minHeight: '100vh' }}>
+     <div style={{ background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))',padding:'40px', minHeight: '100vh',}}>
       <NavBar user={user} pet={pet} />
       <div style={{ maxWidth: 860, margin: '58px auto 0', paddingBottom: 40 }}>
 
@@ -248,7 +248,7 @@ export default function Profile() {
               <h1 style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.65rem' }}>
                 {pet.pet_name} {pet.emoji || '🐾'}
               </h1>
-              <p style={{ color: '#6B7280', fontSize: '0.86rem', marginTop: 2 }}>
+              <p style={{ color: '#000000ff', fontSize: '0.86rem', marginTop: 2 }}>
                 {pet.pet_breed} · Managed by {pet.owner_name}
               </p>
               {!editing && (
@@ -266,8 +266,8 @@ export default function Profile() {
             <div style={{ display: 'flex', gap: 20 }}>
               {[['Posts', posts.length], ['PawCoins', pet.paw_coins || 0]].map(([l, v]) => (
                 <div key={l} style={{ textAlign: 'center' }}>
-                  <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, color: '#FF6B35', fontSize: '1.2rem' }}>{v}</div>
-                  <div style={{ fontSize: '0.7rem', color: '#6B7280' }}>{l}</div>
+                  <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, color: '#ff0000ff', fontSize: '1.2rem' }}>{v}</div>
+                  <div style={{ fontSize: '0.7rem', color: '#000000ff' }}>{l}</div>
                 </div>
               ))}
             </div>
@@ -307,7 +307,7 @@ export default function Profile() {
                 style={{
                   padding: '9px 18px', border: 'none', background: 'transparent',
                   cursor: 'pointer', fontFamily: 'Nunito, sans-serif', fontWeight: 700,
-                  fontSize: '0.86rem', color: tab === t ? '#FF6B35' : '#6B7280',
+                  fontSize: '0.86rem', color: tab === t ? '#ffffffff' : '#000000ff',
                   borderBottom: tab === t ? '3px solid #FF6B35' : '3px solid transparent',
                   marginBottom: -2
                 }}>
@@ -320,7 +320,7 @@ export default function Profile() {
           {tab === 'posts' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {posts.length === 0 && (
-                <div className="card" style={{ textAlign: 'center', color: '#6B7280', padding: 30 }}>
+                <div className="card" style={{ textAlign: 'center', color: '#000000ff', padding: 30 }}>
                   No posts yet — go share something on the feed! 🐾
                 </div>
               )}

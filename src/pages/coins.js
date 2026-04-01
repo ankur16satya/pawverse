@@ -45,7 +45,7 @@ export default function Coins() {
   const tier = balance >= 5000 ? '💎 PawVerse Elite' : balance >= 2500 ? '🥇 Top Paw' : balance >= 1000 ? '🥈 Good Boy/Girl' : '🥉 Pup'
 
   return (
-    <div style={{ background: '#FFFBF7', minHeight: '100vh' }}>
+    <div style={{ background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))',padding:'30px', minHeight: '100vh',}}>
       <NavBar user={user} pet={pet} />
       <div style={{ maxWidth: 960, margin: '70px auto 0', padding: 14 }}>
         {/* Hero */}

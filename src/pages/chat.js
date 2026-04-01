@@ -352,13 +352,13 @@ export default function Chat() {
   )
 
   return (
-    <div style={{ background: '#FFFBF7', minHeight: '100vh' }}>
+   <div style={{ background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))',padding:'50px', minHeight: '100vh',}}>
       <NavBar user={user} pet={pet} unreadMessages={totalUnread} />
 
       <div style={{ maxWidth: 1000, margin: '58px auto 0', height: 'calc(100vh - 58px)', display: 'flex', overflow: 'hidden' }}>
 
         {/* LEFT — Friend List */}
-        <div style={{ width: 300, borderRight: '1px solid #EDE8FF', background: '#fff', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+        <div style={{ width: 300, border: '2px solid #000',  background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
           <div style={{ padding: '16px 14px 10px', borderBottom: '1px solid #EDE8FF' }}>
             <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.2rem', color: '#1E1347' }}>💬 Messages</div>
             <div style={{ fontSize: '0.78rem', color: '#6B7280', marginTop: 2 }}>{friends.length} friend{friends.length !== 1 ? 's' : ''}</div>
@@ -366,10 +366,10 @@ export default function Chat() {
 
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {friends.length === 0 ? (
-              <div style={{ padding: 24, textAlign: 'center' }}>
-                <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>🐾</div>
-                <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.95rem', color: '#1E1347' }}>No friends yet</div>
-                <p style={{ color: '#6B7280', fontSize: '0.78rem', marginTop: 4 }}>Add friends first to start chatting!</p>
+              <div style={{ padding: 24, textAlign: 'center'}}>
+                <div style={{ fontSize: '2.5rem', marginBottom: 8, }}>🐾</div>
+                <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.95rem', color: '#1E1347', }}>No friends yet</div>
+                <p style={{ color: '#ffffffff', fontSize: '1rem', marginTop: 4 }}>Add friends first to start chatting!</p>
                 <button onClick={() => router.push('/friends')} className="btn-primary"
                   style={{ marginTop: 10, padding: '7px 16px', fontSize: '0.8rem', borderRadius: 10 }}>
                   👫 Find Friends
@@ -435,7 +435,7 @@ export default function Chat() {
         </div>
 
         {/* RIGHT — Chat Window */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#FFFBF7', position: 'relative' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))',border:'2px solid #000', position: 'relative' }}>
           {!activeConv ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
               <div style={{ fontSize: '4rem' }}>🐾</div>
@@ -447,7 +447,7 @@ export default function Chat() {
           ) : (
             <>
               {/* Chat Header */}
-              <div style={{ padding: '12px 16px', borderBottom: '1px solid #EDE8FF', background: '#fff', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid #EDE8FF', background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))', display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{
                   width: 42, height: 42, borderRadius: '50%', background: '#FFE8F0',
                   border: '2px solid #FF6B35', display: 'flex', alignItems: 'center',
@@ -461,7 +461,7 @@ export default function Chat() {
                   <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1rem', color: '#1E1347' }}>
                     {activeFriend?.pet_name}
                   </div>
-                  <div style={{ fontSize: '0.72rem', color: '#22C55E', fontWeight: 700 }}>🟢 Friends</div>
+                  <div style={{ fontSize: '0.72rem', color: '#000000ff', fontWeight: 700 }}>🟢 Friends</div>
                 </div>
               </div>
 

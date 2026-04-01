@@ -314,7 +314,7 @@ meant_for_list: form.meant_for_list.includes('Other')
   )
 
   return (
-    <div style={{ background: '#FFFBF7', minHeight: '100vh' }}>
+    <div style={{ background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))',padding:'30px', minHeight: '100vh' }}>
       <NavBar user={user} pet={pet} />
 
       {/* Lightbox */}

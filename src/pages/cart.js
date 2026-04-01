@@ -76,13 +76,13 @@ export default function Cart() {
   )
 
   return (
-    <div style={{ background: '#FFFBF7', minHeight: '100vh' }}>
+    <div style={{ background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))',padding:'30px', minHeight: '100vh',}}>
       <NavBar user={user} pet={pet} />
 
       <div style={{ maxWidth: 860, margin: '70px auto 0', padding: '20px 14px 40px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <h1 style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.8rem', color: '#1E1347' }}>
-            🛒 My Cart
+           🛒 My Cart
           </h1>
           {cartItems.length > 0 && (
             <button onClick={clearCart}
