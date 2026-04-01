@@ -376,22 +376,13 @@ meant_for_list: form.meant_for_list.includes('Other')
           <div style={{ background: '#fff', borderRadius: 20, padding: 28, width: '100%', maxWidth: 520, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto', margin: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.2rem', color: '#1E1347' }}>
-                {form.is_service ? '🩺 List Your Service' : '📦 Create Product Listing'}
+                📦 Create Product Listing
               </div>
               <button onClick={() => { setShowCreateModal(false); setForm(emptyForm) }}
                 style={{ background: 'none', border: 'none', fontSize: '1.3rem', cursor: 'pointer', color: '#6B7280' }}>✕</button>
             </div>
 
-            {/* Toggle */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-              {[false, true].map(isService => (
-                <button key={String(isService)}
-                  onClick={() => setForm(prev => ({ ...prev, is_service: isService }))}
-                  style={{ flex: 1, padding: '10px', border: 'none', borderRadius: 12, background: form.is_service === isService ? 'linear-gradient(135deg,#FF6B35,#6C4BF6)' : '#F3F0FF', color: form.is_service === isService ? '#fff' : '#6C4BF6', fontFamily: 'Nunito, sans-serif', fontWeight: 800, fontSize: '0.88rem', cursor: 'pointer' }}>
-                  {isService ? '🩺 Service / Clinic' : '📦 Product'}
-                </button>
-              ))}
-            </div>
+           
 
             {/* PRODUCT FIELDS */}
             {!form.is_service && (
@@ -425,34 +416,7 @@ meant_for_list: form.meant_for_list.includes('Other')
               </>
             )}
 
-            {/* SERVICE FIELDS */}
-            {form.is_service && (
-              <>
-                <label className="label">Clinic / Doctor Name *</label>
-                <input className="input" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Dr. Mehra's Pet Clinic" />
-
-                <label className="label">Service Type *</label>
-                <select className="input" value={form.service_type} onChange={e => setForm(p => ({ ...p, service_type: e.target.value }))}>
-                  <option value="">-- Select Service Type --</option>
-                  <option value="Grooming Services">✂️ Grooming Services</option>
-                  <option value="Veterinary & Health Services">🩺 Veterinary & Health Services</option>
-                  <option value="Pet Boarding & Daycare">🏠 Pet Boarding & Daycare</option>
-                  <option value="Pet Walking & Exercise">🏃 Pet Walking & Exercise</option>
-                  <option value="Training Services">🎓 Training Services</option>
-                  <option value="Pet Products & Retail">🛍️ Pet Products & Retail</option>
-                  <option value="Other">✏️ Other</option>
-                </select>
-                {form.service_type === 'Other' && (
-                  <input className="input" value={form.service_type_custom} onChange={e => setForm(p => ({ ...p, service_type_custom: e.target.value }))} placeholder="Specify service type..." />
-                )}
-
-                <label className="label">Duration *</label>
-                <input className="input" value={form.duration} onChange={e => setForm(p => ({ ...p, duration: e.target.value }))} placeholder="e.g. 30 mins, 1 hour, Full day..." />
-
-                <label className="label">Cost (₹) *</label>
-                <input className="input" type="number" value={form.price} onChange={e => setForm(p => ({ ...p, price: e.target.value }))} placeholder="e.g. 500" min="0" />
-              </>
-            )}
+           
 
             {/* Images — up to 3 */}
             <label className="label">Images (Max {MAX_IMAGES})</label>
@@ -545,7 +509,7 @@ meant_for_list: form.meant_for_list.includes('Other')
 
             <button onClick={handleCreateListing} disabled={submitting}
               style={{ width: '100%', padding: '12px', border: 'none', borderRadius: 12, background: 'linear-gradient(135deg,#FF6B35,#6C4BF6)', color: '#fff', fontFamily: 'Nunito, sans-serif', fontWeight: 800, fontSize: '0.95rem', cursor: 'pointer', marginTop: 8, opacity: submitting ? 0.7 : 1 }}>
-              {submitting ? '📤 Publishing...' : form.is_service ? '🩺 Publish Service' : '🚀 Publish Listing'}
+              {submitting ? '📤 Publishing...' : '🚀 Publish Listing'}
             </button>
           </div>
         </div>
@@ -613,7 +577,7 @@ meant_for_list: form.meant_for_list.includes('Other')
           {/* Sell Here */}
           <div className="card" style={{ background: 'linear-gradient(135deg,#FFF0E8,#FFE0D5)', border: 'none' }}>
             <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.9rem', marginBottom: 6 }}>🐾 Sell Here</div>
-            <p style={{ fontSize: '0.76rem', color: '#6B7280', marginBottom: 10 }}>List your pet products or services — free!</p>
+            <p style={{ fontSize: '0.76rem', color: '#6B7280', marginBottom: 10 }}>List your pet products or services</p>
             <button onClick={() => setShowCreateModal(true)} className="btn-primary" style={{ width: '100%', fontSize: '0.82rem', padding: '8px' }}>
               + Create Listing
             </button>
