@@ -3,11 +3,21 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Base Reset ── */
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Nunito', sans-serif; background: #FFFBF7; color: #1E1347; }
-::-webkit-scrollbar { width: 4px; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: 'Nunito', sans-serif;
+  background: #FFFBF7;
+  color: #1E1347;
+  overflow-x: hidden;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-thumb { background: #6C4BF6; border-radius: 4px; }
 
+/* ── Animations ── */
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(20px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -22,11 +32,22 @@ body { font-family: 'Nunito', sans-serif; background: #FFFBF7; color: #1E1347; }
   90%  { opacity: 0.2; }
   100% { transform: translateY(-100px) rotate(360deg); opacity: 0; }
 }
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
 
-.fade-up   { animation: fadeUp 0.4s ease forwards; }
+.fade-up    { animation: fadeUp 0.4s ease forwards; }
 .float-anim { animation: float 2.5s ease-in-out infinite; }
 .paw-float  { animation: pawFloat linear infinite; position: absolute; pointer-events: none; font-size: 1.6rem; }
+.slide-in   { animation: slideIn 0.3s ease forwards; }
+.scale-in   { animation: scaleIn 0.25s ease forwards; }
 
+/* ── Base Components ── */
 .btn-primary {
   @apply bg-gradient-to-r from-orange to-pink text-white font-bold rounded-xl px-5 py-2.5
          transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg cursor-pointer border-0;
@@ -41,5 +62,560 @@ body { font-family: 'Nunito', sans-serif; background: #FFFBF7; color: #1E1347; }
 .input {
   @apply w-full border-2 border-pawborder rounded-xl px-3 py-2.5 font-nunito text-sm
          outline-none transition-all duration-200 focus:border-orange bg-white;
+  color: #1E1347;
 }
 .label { @apply block font-bold text-xs text-pawdark mt-3 mb-1; }
+
+/* ─────────────────────────────────────────────
+   MOBILE BOTTOM NAVIGATION
+───────────────────────────────────────────── */
+.mobile-bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background: rgba(255,251,247,0.97);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid #EDE8FF;
+  box-shadow: 0 -4px 20px rgba(108,75,246,0.08);
+  z-index: 998;
+  align-items: center;
+  justify-content: space-around;
+  padding: 0 4px;
+}
+.mobile-nav-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 12px;
+  transition: all 0.2s;
+  min-width: 52px;
+  position: relative;
+  color: #9CA3AF;
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.58rem;
+  font-weight: 700;
+}
+.mobile-nav-btn.active {
+  color: #FF6B35;
+  background: rgba(255,107,53,0.08);
+}
+.mobile-nav-btn .nav-icon { font-size: 1.25rem; line-height: 1; }
+.mobile-nav-badge {
+  position: absolute;
+  top: 3px;
+  right: 8px;
+  min-width: 16px;
+  height: 16px;
+  background: linear-gradient(135deg, #FF6B9D, #FF4757);
+  border-radius: 50%;
+  border: 2px solid #FFFBF7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.55rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+/* ─────────────────────────────────────────────
+   RESPONSIVE LAYOUT HELPERS
+   These override inline grid styles at breakpoints
+───────────────────────────────────────────── */
+
+/* Feed page 3-col grid */
+.feed-layout {
+  display: grid;
+  grid-template-columns: 250px 1fr 250px;
+  gap: 14px;
+  max-width: 1100px;
+  margin: 70px auto 0;
+  padding: 14px;
+}
+
+/* Marketplace 2-col grid */
+.marketplace-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 14px;
+  max-width: 1100px;
+  margin: 70px auto 0;
+  padding: 14px;
+}
+
+/* Chat layout */
+.chat-layout {
+  max-width: 1000px;
+  margin: 58px auto 0;
+  height: calc(100vh - 58px);
+  display: flex;
+  overflow: hidden;
+}
+.chat-sidebar {
+  width: 300px;
+  border-right: 1px solid #EDE8FF;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+.chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Profile & user pages */
+.profile-layout {
+  max-width: 860px;
+  margin: 58px auto 0;
+  padding-bottom: 40px;
+}
+
+/* Listing detail */
+.listing-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+/* Friends grid */
+.friends-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+/* Cart layout */
+.cart-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 20px;
+}
+
+/* Sticky sidebar */
+.sticky-sidebar {
+  position: sticky;
+  top: 70px;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ─────────────────────────────────────────────
+   TABLET — 768px to 1024px
+───────────────────────────────────────────── */
+@media (max-width: 1024px) {
+  .feed-layout {
+    grid-template-columns: 200px 1fr 200px;
+    gap: 10px;
+    padding: 10px;
+  }
+  .marketplace-layout {
+    grid-template-columns: 190px 1fr;
+    gap: 10px;
+  }
+  .chat-sidebar { width: 260px; }
+}
+
+/* ─────────────────────────────────────────────
+   MOBILE — max 768px
+───────────────────────────────────────────── */
+@media (max-width: 768px) {
+  /* Show bottom nav */
+  .mobile-bottom-nav { display: flex !important; }
+
+  /* Add bottom padding so content isn't hidden behind bottom nav */
+  body { padding-bottom: 68px; }
+
+  /* ── NAVBAR mobile ── */
+  .navbar-desktop-links { display: none !important; }
+  .navbar-search {
+    width: 100% !important;
+    max-width: 200px;
+  }
+  nav[data-pawverse-nav] {
+    padding: 0 10px !important;
+    gap: 8px !important;
+  }
+
+  /* ── FEED layout ── */
+  .feed-layout {
+    grid-template-columns: 1fr !important;
+    margin-top: 62px !important;
+    padding: 8px !important;
+    gap: 10px !important;
+  }
+  /* Hide left and right sidebars on mobile feed */
+  .feed-left-sidebar { display: none !important; }
+  .feed-right-sidebar { display: none !important; }
+
+  /* ── MARKETPLACE ── */
+  .marketplace-layout {
+    grid-template-columns: 1fr !important;
+    margin-top: 62px !important;
+    padding: 8px !important;
+  }
+  .marketplace-sidebar { display: none !important; }
+  .marketplace-categories-mobile {
+    display: flex !important;
+    overflow-x: auto;
+    gap: 8px;
+    padding: 8px 0;
+    scrollbar-width: none;
+  }
+  .marketplace-categories-mobile::-webkit-scrollbar { display: none; }
+
+  /* ── CHAT ── */
+  .chat-layout {
+    flex-direction: column !important;
+    height: auto !important;
+    margin-top: 62px !important;
+  }
+  .chat-sidebar {
+    width: 100% !important;
+    border-right: none !important;
+    border-bottom: 1px solid #EDE8FF;
+    max-height: 45vh;
+    overflow-y: auto;
+  }
+  .chat-main {
+    height: calc(100vh - 45vh - 62px - 60px);
+    min-height: 300px;
+  }
+  .chat-active-hide { display: none !important; }
+  .chat-active-show { display: flex !important; }
+
+  /* ── PROFILE ── */
+  .profile-layout {
+    margin-top: 62px !important;
+    padding: 0 0 40px !important;
+  }
+
+  /* ── LISTING DETAIL ── */
+  .listing-detail-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  /* ── FRIENDS ── */
+  .friends-card-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  /* ── CART ── */
+  .cart-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── CARDS ── */
+  .card { border-radius: 1rem; }
+
+  /* ── MODALS ── */
+  .modal-mobile {
+    padding: 12px !important;
+    border-radius: 20px 20px 0 0 !important;
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    max-height: 92vh !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+  }
+
+  /* ── TYPOGRAPHY ── */
+  h1 { font-size: clamp(1.4rem, 5vw, 2rem) !important; }
+  h2 { font-size: clamp(1.1rem, 4vw, 1.5rem) !important; }
+
+  /* ── BUTTONS ── */
+  .btn-primary, .btn-secondary {
+    padding: 9px 16px !important;
+    font-size: 0.85rem !important;
+  }
+
+  /* ── DOCTOR DASHBOARD ── */
+  .doctor-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── COINS page ── */
+  .coins-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ─────────────────────────────────────────────
+   SMALL MOBILE — max 480px
+───────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .feed-layout { padding: 6px !important; gap: 8px !important; }
+  .card { padding: 12px !important; }
+
+  /* Composer buttons - hide location/feeling on tiny screens */
+  .composer-extra-btn { display: none !important; }
+
+  /* Post action buttons - text shrink */
+  .post-action-btn { font-size: 0.72rem !important; padding: 6px 2px !important; }
+
+  /* Friends grid single column on tiny screens */
+  .friends-card-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  /* Chat input area */
+  .chat-input-area { padding: 8px !important; gap: 6px !important; }
+  .chat-emoji-btn { display: none !important; }
+
+  /* Marketplace cards */
+  .marketplace-cards-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  /* Navbar compact */
+  nav[data-pawverse-nav] .navbar-coins { display: none !important; }
+  nav[data-pawverse-nav] .navbar-logout { display: none !important; }
+}
+
+/* ─────────────────────────────────────────────
+   CHAT MOBILE TOGGLE
+   When a chat is open on mobile, hide friend list
+───────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .chat-has-active .chat-sidebar { display: none !important; }
+  .chat-has-active .chat-main { display: flex !important; height: calc(100vh - 62px - 60px) !important; }
+  .chat-back-btn { display: flex !important; }
+}
+.chat-back-btn { display: none; }
+
+/* ─────────────────────────────────────────────
+   MARKETPLACE MOBILE CATEGORY STRIP
+───────────────────────────────────────────── */
+.mobile-cat-strip {
+  display: none;
+  overflow-x: auto;
+  gap: 8px;
+  padding: 10px 8px;
+  scrollbar-width: none;
+  background: #fff;
+  border-bottom: 1px solid #EDE8FF;
+  position: sticky;
+  top: 58px;
+  z-index: 10;
+}
+.mobile-cat-strip::-webkit-scrollbar { display: none; }
+.mobile-cat-pill {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border-radius: 50px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+  background: #F3F0FF;
+  color: #6C4BF6;
+}
+.mobile-cat-pill.active {
+  background: #FF6B35;
+  color: #fff;
+}
+
+@media (max-width: 768px) {
+  .mobile-cat-strip { display: flex !important; }
+}
+
+/* ─────────────────────────────────────────────
+   PROFILE PAGE COVER RESPONSIVE
+───────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .profile-cover { height: 160px !important; }
+  .profile-avatar-wrap { bottom: -32px !important; left: 16px !important; }
+  .profile-avatar { width: 80px !important; height: 80px !important; }
+  .profile-cam-btn { width: 26px !important; height: 26px !important; font-size: 0.7rem !important; }
+  .profile-content-pad { padding: 44px 14px 0 !important; }
+  .profile-stats { gap: 12px !important; }
+  .profile-tabs button { padding: 8px 12px !important; font-size: 0.8rem !important; }
+}
+
+/* ─────────────────────────────────────────────
+   FEED COMPOSER RESPONSIVE
+───────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .composer-actions {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+  .composer-post-btn {
+    width: 100% !important;
+    margin-top: 6px !important;
+  }
+}
+
+/* ─────────────────────────────────────────────
+   INDEX / AUTH PAGE RESPONSIVE
+───────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .auth-card { padding: 16px !important; border-radius: 20px !important; }
+  .auth-logo { font-size: 2.2rem !important; }
+  .auth-feature-pills { gap: 4px !important; }
+  .auth-feature-pills span { font-size: 0.7rem !important; padding: 4px 8px !important; }
+  .auth-cta-row { flex-direction: column !important; }
+  .auth-cta-row button { width: 100% !important; }
+}
+
+/* ─────────────────────────────────────────────
+   LISTING DETAIL RESPONSIVE
+───────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .listing-detail-wrap {
+    margin-top: 62px !important;
+    padding: 12px !important;
+  }
+  .listing-back-btn { margin-bottom: 10px !important; }
+  .listing-img-main { height: 240px !important; }
+  .listing-schedule-days { flex-wrap: wrap !important; }
+}
+
+/* ─────────────────────────────────────────────
+   FRIENDS PAGE RESPONSIVE
+───────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .friends-page-wrap {
+    padding: 10px !important;
+    margin-top: 62px !important;
+  }
+  .friends-tabs { overflow-x: auto; scrollbar-width: none; }
+  .friends-tabs::-webkit-scrollbar { display: none; }
+  .friends-tabs button { white-space: nowrap; padding: 8px 12px !important; }
+}
+
+/* ─────────────────────────────────────────────
+   CART PAGE RESPONSIVE
+───────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .cart-page-wrap {
+    margin-top: 62px !important;
+    padding: 10px !important;
+  }
+  .cart-item { flex-wrap: wrap !important; gap: 10px !important; }
+  .cart-item-img { width: 70px !important; height: 70px !important; }
+  .cart-order-summary { position: static !important; }
+}
+
+/* ─────────────────────────────────────────────
+   NOTIFICATIONS DROPDOWN RESPONSIVE
+───────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .notif-dropdown {
+    width: 92vw !important;
+    right: -40px !important;
+  }
+}
+
+/* ─────────────────────────────────────────────
+   DOCTOR DASHBOARD RESPONSIVE
+───────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .doctor-dashboard-wrap {
+    margin-top: 62px !important;
+    padding: 10px !important;
+  }
+  .doctor-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .doctor-tabs { flex-direction: row !important; }
+  .appt-row {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+  .appt-actions { width: 100% !important; flex-direction: row !important; }
+}
+
+/* ─────────────────────────────────────────────
+   UTILITY: Hide/Show at breakpoints
+───────────────────────────────────────────── */
+.hide-mobile { }
+.show-mobile { display: none !important; }
+
+@media (max-width: 768px) {
+  .hide-mobile { display: none !important; }
+  .show-mobile { display: flex !important; }
+  .show-mobile-block { display: block !important; }
+}
+
+/* ─────────────────────────────────────────────
+   GLOBAL SPACING FIX FOR MOBILE NAV
+───────────────────────────────────────────── */
+.page-wrap {
+  padding-bottom: 0;
+}
+@media (max-width: 768px) {
+  .page-wrap { padding-bottom: 68px; }
+}
+
+/* ─────────────────────────────────────────────
+   IMAGES: Prevent overflow on mobile
+───────────────────────────────────────────── */
+img { max-width: 100%; }
+textarea { max-width: 100%; }
+
+/* ─────────────────────────────────────────────
+   GRID PRODUCT CARDS RESPONSIVE
+───────────────────────────────────────────── */
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 14px;
+}
+@media (max-width: 768px) {
+  .product-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+}
+@media (max-width: 360px) {
+  .product-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ─────────────────────────────────────────────
+   TOAST NOTIFICATION
+───────────────────────────────────────────── */
+.toast-msg {
+  position: fixed;
+  bottom: 80px;
+  right: 16px;
+  background: #1E1347;
+  color: #fff;
+  padding: 12px 18px;
+  border-radius: 14px;
+  font-weight: 700;
+  font-size: 0.86rem;
+  z-index: 3000;
+  animation: fadeUp 0.3s ease;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  max-width: calc(100vw - 32px);
+}
+@media (max-width: 480px) {
+  .toast-msg {
+    bottom: 72px;
+    left: 16px;
+    right: 16px;
+    text-align: center;
+  }
+}
