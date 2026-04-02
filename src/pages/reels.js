@@ -233,7 +233,6 @@ export default function Reels() {
       conversation_id: convId,
       sender_id: user.id,
       content: `🐾 ${pet.pet_name} shared a reel with you!`,
-      shared_post_id: reel.id,
       shared_post_preview: JSON.stringify({
         id: reel.id,
         content: reel.caption?.slice(0, 120) || '',

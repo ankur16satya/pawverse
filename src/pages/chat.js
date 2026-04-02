@@ -23,6 +23,7 @@ export default function Chat() {
   const [uploadingImage, setUploadingImage] = useState(false)
   const [unreadCounts, setUnreadCounts] = useState({})
   const [totalUnread, setTotalUnread] = useState(0)
+  const [hoveredMsgId, setHoveredMsgId] = useState(null)
 
   const messagesEndRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -155,7 +156,7 @@ export default function Chat() {
           }
           const otherConvs = prev.filter(c => c.id !== newMsg.conversation_id)
           return [
-            { ...conv, last_message: newMsg.content || (newMsg.shared_post_id ? '🐾 Shared a post' : '📸 Image'), last_message_at: newMsg.created_at },
+            { ...conv, last_message: newMsg.content || (newMsg.shared_post_preview ? '🐾 Shared a post' : '📸 Image'), last_message_at: newMsg.created_at },
             ...otherConvs
           ]
         })
@@ -170,10 +171,21 @@ export default function Chat() {
         table: 'messages',
       }, (payload) => {
         const updated = payload.new
-        // Update read status in real-time for sent messages
-        setMessages(prev => prev.map(m =>
-          m.id === updated.id ? { ...m, is_read: updated.is_read } : m
-        ))
+        // Update read status or deleted state
+        setMessages(prev => {
+          if ((updated.deleted_for || []).includes(userId)) {
+             return prev.filter(m => m.id !== updated.id)
+          }
+          return prev.map(m => m.id === updated.id ? { ...m, is_read: updated.is_read } : m)
+        })
+      })
+      .on('postgres_changes', {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'messages',
+      }, (payload) => {
+        // Handle unsend event
+        setMessages(prev => prev.filter(m => m.id !== payload.old.id))
       })
       .subscribe()
 
@@ -254,7 +266,16 @@ export default function Chat() {
       .from('messages').select('*')
       .eq('conversation_id', conv.id)
       .order('created_at', { ascending: true })
-    setMessages(msgs || [])
+      
+    const clearedAt = conv.participant_1 === user.id ? conv.participant_1_cleared_at : conv.participant_2_cleared_at
+    
+    let filteredMsgs = msgs || []
+    if (clearedAt) {
+      filteredMsgs = filteredMsgs.filter(m => new Date(m.created_at) > new Date(clearedAt))
+    }
+    filteredMsgs = filteredMsgs.filter(m => !(m.deleted_for || []).includes(user.id))
+
+    setMessages(filteredMsgs)
 
     // Mark all as read
     const unreadMsgIds = (msgs || [])
@@ -338,6 +359,35 @@ export default function Chat() {
     if (file.size > 5 * 1024 * 1024) { alert('Image must be under 5MB'); return }
     setSelectedImage(file)
     setImagePreview(URL.createObjectURL(file))
+  }
+
+  const handleClearChat = async () => {
+    if (!activeConv || !user) return
+    if (!confirm(`Are you sure you want to clear the chat with ${activeFriend?.pet_name}? This will remove all messages for you.`)) return
+
+    const clearedAtCol = activeConv.participant_1 === user.id ? 'participant_1_cleared_at' : 'participant_2_cleared_at'
+    
+    await supabase.from('conversations')
+      .update({ [clearedAtCol]: new Date().toISOString() })
+      .eq('id', activeConv.id)
+
+    setMessages([])
+    setConversations(prev => prev.map(c => 
+      c.id === activeConv.id ? { ...c, [clearedAtCol]: new Date().toISOString() } : c
+    ))
+  }
+
+  const handleDeleteForMe = async (msgId, existingDeletedFor) => {
+    if (!confirm('Delete this message for yourself?')) return
+    setMessages(prev => prev.filter(m => m.id !== msgId)) // Optimistic update
+    const newDeletedFor = [...(existingDeletedFor || []), user.id]
+    await supabase.from('messages').update({ deleted_for: newDeletedFor }).eq('id', msgId)
+  }
+
+  const handleUnsend = async (msgId) => {
+    if (!confirm('Unsend this message? It will be removed for everyone.')) return
+    setMessages(prev => prev.filter(m => m.id !== msgId)) // Optimistic update
+    await supabase.from('messages').delete().eq('id', msgId)
   }
 
   const formatTime = (ts) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -468,6 +518,10 @@ export default function Chat() {
                   </div>
                   <div style={{ fontSize: '0.72rem', color: '#000000ff', fontWeight: 700 }}>🟢 Friends</div>
                 </div>
+                <div style={{ flex: 1 }} />
+                <button onClick={handleClearChat} style={{ background: '#FF4757', color: '#fff', border: 'none', borderRadius: 12, padding: '6px 12px', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'Nunito, sans-serif' }}>
+                  Clear Chat
+                </button>
               </div>
 
               {/* Messages */}
@@ -491,9 +545,12 @@ export default function Chat() {
                   const isLastFromSender = !messages[idx + 1] || messages[idx + 1].sender_id !== msg.sender_id
 
                   return (
-                    <div key={msg.id} style={{
+                    <div key={msg.id} 
+                      onMouseEnter={() => setHoveredMsgId(msg.id)}
+                      onMouseLeave={() => setHoveredMsgId(null)}
+                      style={{
                       display: 'flex', flexDirection: isMe ? 'row-reverse' : 'row',
-                      alignItems: 'flex-end', gap: 6, marginBottom: 2
+                      alignItems: 'center', gap: 6, marginBottom: 2
                     }}>
                       {!isMe && (
                         <div style={{
@@ -590,6 +647,16 @@ export default function Chat() {
                           </div>
                         )}
                       </div>
+                      
+                      {/* Action Menu (Hover) */}
+                      {hoveredMsgId === msg.id && (
+                        <div style={{ display: 'flex', flexDirection: isMe ? 'row-reverse' : 'row', gap: 6, padding: '0 8px' }}>
+                          <button onClick={() => handleDeleteForMe(msg.id, msg.deleted_for)} title="Delete for me" style={{ background: 'rgba(255, 71, 87, 0.1)', color: '#FF4757', border: 'none', borderRadius: '50%', cursor: 'pointer', fontSize: '0.8rem', width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🗑️</button>
+                          {isMe && (
+                            <button onClick={() => handleUnsend(msg.id)} title="Unsend" style={{ background: 'rgba(108, 75, 246, 0.1)', color: '#6C4BF6', border: 'none', borderRadius: '50%', cursor: 'pointer', fontSize: '0.8rem', width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>↩️</button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )
                 })}

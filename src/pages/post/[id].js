@@ -28,14 +28,24 @@ export default function PostPage() {
       setPet(petData)
     }
 
-    const { data: postData, error } = await supabase
+    let { data: postData, error } = await supabase
       .from('posts')
       .select('*, pets(pet_name, emoji, owner_name, avatar_url, user_id, pet_breed)')
       .eq('id', id)
       .single()
 
-    if (error || !postData) { setNotFound(true); setLoading(false); return }
-    setPost(postData)
+    let isReel = false;
+    if (error || !postData) {
+      const { data: reelData, error: reelErr } = await supabase
+        .from('reels')
+        .select('*, pets(pet_name, emoji, owner_name, avatar_url, user_id)')
+        .eq('id', id)
+        .single()
+      if (reelErr || !reelData) { setNotFound(true); setLoading(false); return }
+      postData = reelData;
+      isReel = true;
+    }
+    setPost({ ...postData, is_reel: isReel })
 
     // fetch comments
     const { data: commentsData } = await supabase
@@ -47,7 +57,8 @@ export default function PostPage() {
     setComments(commentsData || [])
 
     // increment views
-    await supabase.from('posts').update({ views: (postData.views || 0) + 1 }).eq('id', id)
+    const tableName = isReel ? 'reels' : 'posts';
+    await supabase.from(tableName).update({ views: (postData.views || 0) + 1 }).eq('id', id)
 
     setLoading(false)
   }
@@ -57,7 +68,8 @@ export default function PostPage() {
     const newLikes = (post.likes || 0) + (likedByMe ? -1 : 1)
     setLikedByMe(!likedByMe)
     setPost(p => ({ ...p, likes: newLikes }))
-    await supabase.from('posts').update({ likes: newLikes }).eq('id', post.id)
+    const tableName = post.is_reel ? 'reels' : 'posts';
+    await supabase.from(tableName).update({ likes: newLikes }).eq('id', post.id)
   }
 
   const handleComment = async () => {
@@ -160,10 +172,16 @@ export default function PostPage() {
             </p>
           )}
 
-          {/* Image */}
-          {post.image_url && (
+          {/* Media */}
+          {post.image_url && !post.is_reel && (
             <div style={{ borderRadius: 14, overflow: 'hidden', marginBottom: 14 }}>
               <img src={post.image_url} alt="post" style={{ width: '100%', height: 'auto', maxHeight: 500, objectFit: 'contain', display: 'block' }} />
+            </div>
+          )}
+
+          {post.video_url && post.is_reel && (
+            <div style={{ borderRadius: 14, overflow: 'hidden', marginBottom: 14, background: '#111', display: 'flex', justifyContent: 'center' }}>
+              <video src={post.video_url} controls playsInline autoPlay loop style={{ width: '100%', maxHeight: 500, objectFit: 'contain' }} />
             </div>
           )}
 
