@@ -145,12 +145,24 @@ export default function Chat() {
           })
         }
 
-        // Update conversation last message preview
-        setConversations(prev => prev.map(c =>
-          c.id === newMsg.conversation_id
-            ? { ...c, last_message: newMsg.content || '📸 Image', last_message_at: newMsg.created_at }
-            : c
-        ))
+        // Update conversation last message preview and bubble to top
+        let convMissing = false;
+        setConversations(prev => {
+          const conv = prev.find(c => c.id === newMsg.conversation_id)
+          if (!conv) {
+            convMissing = true;
+            return prev
+          }
+          const otherConvs = prev.filter(c => c.id !== newMsg.conversation_id)
+          return [
+            { ...conv, last_message: newMsg.content || (newMsg.shared_post_id ? '🐾 Shared a post' : '📸 Image'), last_message_at: newMsg.created_at },
+            ...otherConvs
+          ]
+        })
+        
+        if (convMissing) {
+          fetchFriendsAndConversations(userId)
+        }
       })
       .on('postgres_changes', {
         event: 'UPDATE',
@@ -301,13 +313,6 @@ export default function Chat() {
         last_message: newMessage.trim() || '📸 Image',
         last_message_at: new Date().toISOString()
       }).eq('id', activeConv.id)
-
-      // Send notification
-      await supabase.from('notifications').insert({
-        user_id: activeFriend.user_id,
-        type: 'message',
-        message: `${pet.pet_name} sent you a message! 💬`,
-      })
 
       setNewMessage('')
       setSelectedImage(null)
@@ -508,6 +513,21 @@ export default function Chat() {
                           <img src={msg.image_url} alt="shared"
                             style={{ maxWidth: 220, maxHeight: 220, borderRadius: 14, objectFit: 'cover', display: 'block', border: '2px solid #EDE8FF', marginBottom: msg.content ? 4 : 0 }} />
                         )}
+                        {msg.content && (
+                          <div style={{
+                            padding: '9px 13px',
+                            background: isMe ? 'linear-gradient(135deg, #FF6B35, #6C4BF6)' : '#fff',
+                            color: isMe ? '#fff' : '#1E1347',
+                            borderRadius: isMe ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+                            fontSize: '0.88rem', lineHeight: 1.5,
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                            border: isMe ? 'none' : '1px solid #EDE8FF',
+                            wordBreak: 'break-word',
+                            marginBottom: msg.shared_post_preview ? 6 : 0
+                          }}>
+                            {msg.content}
+                          </div>
+                        )}
                         {/* Shared Post Card */}
                         {msg.shared_post_preview && (() => {
                           let preview = null
@@ -515,12 +535,12 @@ export default function Chat() {
                           if (!preview) return null
                           return (
                             <div
-                              onClick={() => router.push(`/post/${preview.id}`)}
+                              onClick={() => router.push(preview.is_reel ? '/reels' : `/post/${preview.id}`)}
                               style={{
                                 background: isMe ? 'rgba(255,255,255,0.15)' : '#F9F5FF',
                                 border: isMe ? '1px solid rgba(255,255,255,0.3)' : '1px solid #EDE8FF',
                                 borderRadius: 14, overflow: 'hidden', maxWidth: 240,
-                                cursor: 'pointer', marginBottom: msg.content ? 6 : 0,
+                                cursor: 'pointer', marginBottom: msg.content ? 0 : 0,
                                 transition: 'transform 0.15s'
                               }}
                               onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.02)'}
@@ -529,6 +549,12 @@ export default function Chat() {
                               {preview.image_url && (
                                 <img src={preview.image_url} alt="post"
                                   style={{ width: '100%', height: 130, objectFit: 'cover', display: 'block' }} />
+                              )}
+                              {preview.video_url && (
+                                <div style={{ width: '100%', height: 130, background: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                                   <video src={preview.video_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                   <div style={{ position: 'absolute', background: 'rgba(0,0,0,0.5)', padding: '4px 8px', borderRadius: 12, color: '#fff', fontSize: '0.7rem', fontWeight: 800 }}>🎬 Reel</div>
+                                </div>
                               )}
                               <div style={{ padding: '8px 10px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
@@ -543,26 +569,12 @@ export default function Chat() {
                                   </p>
                                 )}
                                 <div style={{ marginTop: 5, fontSize: '0.65rem', fontWeight: 700, color: isMe ? 'rgba(255,255,255,0.7)' : '#9CA3AF' }}>
-                                  🐾 PawVerse Post · Tap to view
+                                  {preview.is_reel ? '🎬 PawVerse Reel · Tap to view' : '🐾 PawVerse Post · Tap to view'}
                                 </div>
                               </div>
                             </div>
                           )
                         })()}
-                        {msg.content && !(msg.shared_post_preview) && (
-                          <div style={{
-                            padding: '9px 13px',
-                            background: isMe ? 'linear-gradient(135deg, #FF6B35, #6C4BF6)' : '#fff',
-                            color: isMe ? '#fff' : '#1E1347',
-                            borderRadius: isMe ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-                            fontSize: '0.88rem', lineHeight: 1.5,
-                            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                            border: isMe ? 'none' : '1px solid #EDE8FF',
-                            wordBreak: 'break-word'
-                          }}>
-                            {msg.content}
-                          </div>
-                        )}
                         {isLastFromSender && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3 }}>
                             <span style={{ fontSize: '0.65rem', color: '#9CA3AF' }}>{formatTime(msg.created_at)}</span>

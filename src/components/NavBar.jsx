@@ -78,7 +78,7 @@ export default function NavBar({ user, pet }) {
   }
 
   const fetchNotifications = async () => {
-    const { data } = await supabase.from('notifications').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20)
+    const { data } = await supabase.from('notifications').select('*').eq('user_id', user.id).neq('type', 'message').order('created_at', { ascending: false }).limit(20)
     setNotifications(data || [])
     setUnreadCount((data || []).filter(n => !n.is_read).length)
   }
@@ -109,9 +109,11 @@ export default function NavBar({ user, pet }) {
     const channel = supabase.channel(`navbar-rt-${user.id}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, (payload) => {
         const n = payload.new
-        playSound(n.type === 'message' ? 'message' : 'notification')
-        setNotifications(prev => [n, ...prev])
-        setUnreadCount(prev => prev + 1)
+        if (n.type !== 'message') {
+          playSound('notification')
+          setNotifications(prev => [n, ...prev])
+          setUnreadCount(prev => prev + 1)
+        }
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'friend_requests', filter: `receiver_id=eq.${user.id}` }, (payload) => {
         if (payload.new.status === 'pending') { setPendingFriendCount(prev => prev + 1); playSound('notification') }
@@ -194,10 +196,10 @@ export default function NavBar({ user, pet }) {
   { href: '/reels',       icon: <Video size={26} />, label: 'Reels' },
   { href: '/marketplace', icon: <ShoppingBag size={26} />, label: 'Market' },
   { href: '/health',      icon: <HeartPulse size={26} />, label: 'Health' },
-  { href: '/chat',        icon: <MessageCircle size={26} />, label: 'Chat' },
+  { href: '/chat',        icon: <MessageCircle size={26} />, label: 'Chat', badge: unreadMsgCount },
   { href: '/adopt',       icon: <PawPrint size={26} />, label: 'Adopt' },
   { href: '/coins',       icon: <Coins size={26} />, label: 'Coins' },
-  { href: '/friends',     icon: <Users size={26} />, label: 'Friends' },
+  { href: '/friends',     icon: <Users size={26} />, label: 'Friends', badge: pendingFriendCount },
   { href: '/cart',        icon: <ShoppingCart size={26} />, label: 'Cart' },
 ]
 
@@ -206,7 +208,7 @@ export default function NavBar({ user, pet }) {
     { href: '/feed',        icon: <Home size={26} />, label: 'Feed' },
     { href: '/reels',       icon: <Video size={26} />, label: 'Reels' },
     { href: '/marketplace', icon: <ShoppingBag size={26} />, label: 'Market' },
-    { href: '/chat',        icon: <MessageCircle size={26} />, label: 'Chat',  badge: pendingFriendCount },
+    { href: '/chat',        icon: <MessageCircle size={26} />, label: 'Chat',  badge: unreadMsgCount },
     { href: '/friends',     icon: <Users size={26} />, label: 'Friends', badge: pendingFriendCount },
     { href: '/profile',     icon: '🐾', label: 'Profile' },
   ]

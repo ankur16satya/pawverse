@@ -448,11 +448,6 @@ const postsChannel = supabase
       }),
       is_read: false,
     })
-    await supabase.from('notifications').insert({
-      user_id: friend.user_id,
-      type: 'message',
-      message: `${pet.pet_name} shared a post with you! 🐾`,
-    })
     alert(`✅ Post shared with ${friend.pet_name}!`)
     setShareToFriendsModal(null)
   }

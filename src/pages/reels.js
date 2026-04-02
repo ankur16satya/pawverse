@@ -15,9 +15,46 @@ export default function Reels() {
   const [selectedVideo, setSelectedVideo] = useState(null)
   const [videoPreview, setVideoPreview] = useState(null)
   const [activeReel, setActiveReel] = useState(0)
+  const [shareModal, setShareModal] = useState(null)
+  const [shareToFriendsModal, setShareToFriendsModal] = useState(null)
+  const [friends, setFriends] = useState([])
+  const [commentsModal, setCommentsModal] = useState(null)
+  const [comments, setComments] = useState([])
+  const [commentText, setCommentText] = useState('')
+  const [sendingComment, setSendingComment] = useState(false)
   const [mutedMap, setMutedMap] = useState({})
   const [likedMap, setLikedMap] = useState({})
-  const [shareModal, setShareModal] = useState(null)
+
+  const fetchComments = async (reelId) => {
+    const { data } = await supabase
+      .from('comments')
+      .select('*, pets(pet_name, emoji, avatar_url, user_id)')
+      .eq('post_id', reelId)
+      .order('created_at', { ascending: true })
+    setComments(data || [])
+  }
+
+  const openComments = (reel) => {
+    setCommentsModal(reel)
+    fetchComments(reel.id)
+  }
+
+  const handlePostComment = async () => {
+    if (!commentText.trim() || !commentsModal) return
+    setSendingComment(true)
+    const { data, error } = await supabase.from('comments').insert({
+      post_id: commentsModal.id,
+      user_id: user.id,
+      pet_id: pet.id,
+      content: commentText.trim()
+    }).select('*, pets(pet_name, emoji, avatar_url, user_id)').single()
+    
+    if (data) {
+      setComments(prev => [...prev, data])
+      setCommentText('')
+    }
+    setSendingComment(false)
+  }
   const videoRefs = useRef({})
   const fileInputRef = useRef(null)
   const containerRef = useRef(null)
@@ -37,13 +74,38 @@ export default function Reels() {
   }, [activeReel, reels])
 
   const init = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) { router.push('/'); return }
-    setUser(session.user)
-    const { data: petData } = await supabase.from('pets').select('*').eq('user_id', session.user.id).single()
-    setPet(petData)
-    await fetchReels()
-    setLoading(false)
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError) console.error("Session error:", sessionError)
+      if (!session) { router.push('/'); return }
+      setUser(session.user)
+      
+      const { data: petData, error: petError } = await supabase.from('pets').select('*').eq('user_id', session.user.id).single()
+      if (petError) console.error("Pet fetch error:", petError)
+      setPet(petData)
+      
+      await fetchReels()
+
+      // Fetch friends list for share-to-friends modal
+      const { data: sentRequests } = await supabase
+        .from('friend_requests').select('*').eq('sender_id', session.user.id)
+      const { data: receivedRequests } = await supabase
+        .from('friend_requests').select('*').eq('receiver_id', session.user.id)
+      
+      const friendIds = [
+        ...(sentRequests || []).filter(r => r.status === 'accepted').map(r => r.receiver_id),
+        ...(receivedRequests || []).filter(r => r.status === 'accepted').map(r => r.sender_id)
+      ]
+      
+      if (friendIds.length > 0) {
+        const { data: friendPets } = await supabase.from('pets').select('*').in('user_id', friendIds)
+        setFriends(friendPets || [])
+      }
+    } catch (err) {
+      console.error("Init Error:", err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const fetchReels = async () => {
@@ -131,7 +193,7 @@ export default function Reels() {
   }
 
   const shareViaReel = (platform, reel) => {
-    const url = `${window.location.origin}/reels`
+    const url = `${window.location.origin}/post/${reel.id}`
     const text = `Check out this reel on PawVerse! 🐾🎬`
     const links = {
       whatsapp: `https://wa.me/?text=${encodeURIComponent(text + ' ' + url)}`,
@@ -141,10 +203,51 @@ export default function Reels() {
     }
     if (platform === 'copy') {
       navigator.clipboard.writeText(url).then(() => alert('✅ Link copied!'))
+    } else if (platform === 'friends') {
+      setShareToFriendsModal(reel)
+      setShareModal(null)
     } else {
       window.open(links[platform], '_blank')
     }
-    setShareModal(null)
+    if (platform !== 'friends') setShareModal(null)
+  }
+
+  const shareToFriend = async (friend, reel) => {
+    const { data: existingConv } = await supabase
+      .from('conversations')
+      .select('id')
+      .or(`and(participant_1.eq.${user.id},participant_2.eq.${friend.user_id}),and(participant_1.eq.${friend.user_id},participant_2.eq.${user.id})`)
+      .single()
+
+    let convId = existingConv?.id
+    if (!convId) {
+      const { data: newConv } = await supabase.from('conversations').insert({
+        participant_1: user.id, participant_2: friend.user_id
+      }).select().single()
+      convId = newConv?.id
+    }
+    if (!convId) { alert('Could not open conversation'); return }
+
+    // Send as a structured shared post message
+    await supabase.from('messages').insert({
+      conversation_id: convId,
+      sender_id: user.id,
+      content: `🐾 ${pet.pet_name} shared a reel with you!`,
+      shared_post_id: reel.id,
+      shared_post_preview: JSON.stringify({
+        id: reel.id,
+        content: reel.caption?.slice(0, 120) || '',
+        video_url: reel.video_url || null,
+        pet_name: reel.pets?.pet_name || '',
+        pet_emoji: reel.pets?.emoji || '🐾',
+        avatar_url: reel.pets?.avatar_url || null,
+        owner_name: reel.pets?.owner_name || '',
+        is_reel: true
+      }),
+      is_read: false,
+    })
+    alert(`✅ Reel shared with ${friend.pet_name}!`)
+    setShareToFriendsModal(null)
   }
 
   if (loading) return (
@@ -249,6 +352,12 @@ export default function Reels() {
                   <span style={{ color: '#fff', fontSize: '0.7rem', fontWeight: 700, textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>{reel.likes || 0}</span>
                 </div>
 
+                {/* Comment */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                  <button onClick={() => openComments(reel)} style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', border: 'none', borderRadius: '50%', width: 48, height: 48, fontSize: '1.3rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>💬</button>
+                  <span style={{ color: '#fff', fontSize: '0.7rem', fontWeight: 700, textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>Comment</span>
+                </div>
+
                 {/* Share */}
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
                   <button onClick={() => setShareModal(reel)} style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', border: 'none', borderRadius: '50%', width: 48, height: 48, fontSize: '1.3rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🔗</button>
@@ -305,6 +414,48 @@ export default function Reels() {
         </div>
       )}
 
+      {/* ── COMMENTS MODAL ── */}
+      {commentsModal && (
+        <div onClick={() => setCommentsModal(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 9100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 0 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '24px 24px 0 0', width: '100%', maxWidth: 480, padding: 24, paddingBottom: 40, maxHeight: '70vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #EDE8FF', paddingBottom: 12, marginBottom: 16 }}>
+              <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.2rem', color: '#1E1347' }}>Comments</div>
+              <button onClick={() => setCommentsModal(null)} style={{ background: 'transparent', border: 'none', fontSize: '1.4rem', cursor: 'pointer', color: '#9CA3AF' }}>✕</button>
+            </div>
+            
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 16 }}>
+              {comments.length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#9CA3AF', marginTop: 20 }}>No comments yet. Start the conversation!</div>
+              ) : (
+                comments.map(c => (
+                  <div key={c.id} style={{ display: 'flex', gap: 10 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#F3F0FF', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                      {c.pets?.avatar_url ? <img src={c.pets.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '1.2rem' }}>{c.pets?.emoji || '🐾'}</span>}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#1E1347' }}>{c.pets?.pet_name}</div>
+                      <div style={{ fontSize: '0.9rem', color: '#374151', lineHeight: 1.4 }}>{c.content}</div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                value={commentText}
+                onChange={e => setCommentText(e.target.value)}
+                placeholder="Write a comment..."
+                style={{ flex: 1, background: '#F3F0FF', border: 'none', borderRadius: 20, padding: '12px 16px', outline: 'none', fontFamily: 'Nunito, sans-serif' }}
+              />
+              <button onClick={handlePostComment} disabled={!commentText.trim() || sendingComment} style={{ background: 'linear-gradient(135deg, #FF6B35, #6C4BF6)', color: '#fff', border: 'none', borderRadius: '50%', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: !commentText.trim() ? 'not-allowed' : 'pointer', opacity: !commentText.trim() ? 0.5 : 1 }}>
+                ➤
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── SHARE REEL MODAL ── */}
       {shareModal && (
         <div onClick={() => setShareModal(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 9100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 16 }}>
@@ -317,6 +468,7 @@ export default function Reels() {
                 { id: 'whatsapp', emoji: '💬', label: 'WhatsApp', color: '#25D366', bg: '#E8FFF0' },
                 { id: 'telegram', emoji: '✈️', label: 'Telegram', color: '#0088CC', bg: '#E8F6FF' },
                 { id: 'twitter', emoji: '🐦', label: 'Twitter', color: '#1DA1F2', bg: '#E8F5FF' },
+                { id: 'friends', emoji: '🐾', label: 'Friends', color: '#6C4BF6', bg: '#F0EBFF' },
                 { id: 'copy', emoji: '📋', label: 'Copy Link', color: '#374151', bg: '#F3F4F6' },
               ].map(opt => (
                 <div key={opt.id} onClick={() => shareViaReel(opt.id, shareModal)}
@@ -327,6 +479,34 @@ export default function Reels() {
               ))}
             </div>
             <button onClick={() => setShareModal(null)} style={{ width: '100%', padding: 10, background: '#F3F0FF', border: 'none', borderRadius: 12, fontFamily: 'Nunito, sans-serif', fontWeight: 700, color: '#6C4BF6', cursor: 'pointer' }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── SHARE TO FRIENDS MODAL ── */}
+      {shareToFriendsModal && (
+        <div onClick={() => setShareToFriendsModal(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9101, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 400, padding: 24, boxShadow: '0 8px 40px rgba(0,0,0,0.18)', maxHeight: '80vh', overflowY: 'auto' }}>
+            <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.1rem', marginBottom: 14, color: '#1E1347' }}>🐾 Share with Friends</div>
+            {friends.length === 0 ? (
+              <div style={{ textAlign: 'center', color: '#6B7280', padding: '20px 0' }}>
+                <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>🤷</div>
+                <div style={{ fontWeight: 700 }}>No friends yet!</div>
+                <div style={{ fontSize: '0.8rem', marginTop: 4 }}>Add friends first to share reels with them.</div>
+              </div>
+            ) : friends.map(f => (
+              <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #F3F0FF' }}>
+                <div style={{ width: 42, height: 42, borderRadius: '50%', background: '#F0EBFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem', border: '2px solid #EDE8FF', overflow: 'hidden', flexShrink: 0 }}>
+                  {f.avatar_url ? <img src={f.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="av" /> : f.emoji}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#1E1347' }}>{f.pet_name}</div>
+                  <div style={{ fontSize: '0.72rem', color: '#6B7280' }}>by {f.owner_name}</div>
+                </div>
+                <button onClick={() => shareToFriend(f, shareToFriendsModal)} style={{ background: 'linear-gradient(135deg, #FF6B35, #6C4BF6)', color: '#fff', border: 'none', padding: '6px 14px', fontSize: '0.78rem', borderRadius: 10, cursor: 'pointer', fontWeight: 800 }}>Send 📤</button>
+              </div>
+            ))}
+            <button onClick={() => setShareToFriendsModal(null)} style={{ width: '100%', marginTop: 14, padding: '10px', background: '#F3F0FF', border: 'none', borderRadius: 12, fontFamily: 'Nunito, sans-serif', fontWeight: 700, fontSize: '0.9rem', color: '#6C4BF6', cursor: 'pointer' }}>Close</button>
           </div>
         </div>
       )}
