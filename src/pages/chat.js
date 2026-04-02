@@ -23,6 +23,9 @@ export default function Chat() {
   const [uploadingImage, setUploadingImage] = useState(false)
   const [unreadCounts, setUnreadCounts] = useState({})
   const [totalUnread, setTotalUnread] = useState(0)
+  const [isMobile, setIsMobile] = useState(false)
+  const [longPressMenu, setLongPressMenu] = useState(null)
+  const pressTimer = useRef(null)
   const [hoveredMsgId, setHoveredMsgId] = useState(null)
 
   const messagesEndRef = useRef(null)
@@ -40,7 +43,13 @@ export default function Chat() {
   useEffect(() => { userRef.current = user }, [user])
   useEffect(() => { petRef.current = pet }, [pet])
 
-  useEffect(() => { init() }, [])
+  useEffect(() => {
+    init()
+    const handleResize = () => setIsMobile(window.innerWidth <= 768)
+    handleResize()
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -384,10 +393,59 @@ export default function Chat() {
     await supabase.from('messages').update({ deleted_for: newDeletedFor }).eq('id', msgId)
   }
 
+  const updateConversationLastMessage = async (convId) => {
+    const { data: latestMsgs } = await supabase.from('messages')
+      .select('*')
+      .eq('conversation_id', convId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+
+    let lastFallback = 'Start a conversation 🐾'
+    let lastDate = new Date().toISOString()
+    
+    if (latestMsgs && latestMsgs.length > 0) {
+      const lm = latestMsgs[0]
+      lastFallback = lm.content || (lm.shared_post_preview ? '🐾 Shared a post' : '📸 Image')
+      lastDate = lm.created_at
+    }
+
+    await supabase.from('conversations')
+      .update({ last_message: lastFallback, last_message_at: lastDate })
+      .eq('id', convId)
+      
+    // Instantly update the sidebar UI
+    setConversations(prev => prev.map(c => 
+      c.id === convId ? { ...c, last_message: lastFallback, last_message_at: lastDate } : c
+    ))
+  }
+
   const handleUnsend = async (msgId) => {
     if (!confirm('Unsend this message? It will be removed for everyone.')) return
     setMessages(prev => prev.filter(m => m.id !== msgId)) // Optimistic update
     await supabase.from('messages').delete().eq('id', msgId)
+    updateConversationLastMessage(activeConv.id)
+  }
+
+  const handlePointerDown = (e, msg) => {
+    const isTouch = e.type === 'touchstart'
+    const isRightClick = e.type === 'contextmenu'
+    if (isRightClick) e.preventDefault()
+
+    const x = isTouch ? e.touches[0].clientX : e.clientX
+    const y = isTouch ? e.touches[0].clientY : e.clientY
+    
+    if (isRightClick) {
+      setLongPressMenu({ msg, x, y })
+      return
+    }
+
+    pressTimer.current = setTimeout(() => {
+      setLongPressMenu({ msg, x, y })
+    }, 500)
+  }
+
+  const handlePointerUp = () => {
+    if (pressTimer.current) clearTimeout(pressTimer.current)
   }
 
   const formatTime = (ts) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -407,14 +465,40 @@ export default function Chat() {
   )
 
   return (
-   <div style={{ background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))',padding:'50px', minHeight: '100vh',}}>
-      <NavBar user={user} pet={pet} unreadMessages={totalUnread} />
+   <div style={{ 
+      background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))', 
+      padding: isMobile ? 0 : '50px', 
+      height: '100dvh', // Viewport height dynamic 
+      display: 'flex', 
+      flexDirection: 'column',
+      boxSizing: 'border-box',
+      overflow: 'hidden'
+    }}>
+      {(!isMobile || !activeConv) && <NavBar user={user} pet={pet} unreadMessages={totalUnread} />}
 
-      <div style={{ maxWidth: 1000, margin: '58px auto 0', height: 'calc(100vh - 58px)', display: 'flex', overflow: 'hidden' }}>
+      <div style={{ 
+        flex: 1, 
+        maxWidth: 1000, 
+        margin: isMobile ? 0 : '58px auto 0', 
+        width: '100%', 
+        alignSelf: 'center', 
+        display: 'flex', 
+        overflow: 'hidden',
+        minHeight: 0
+      }}>
 
         {/* LEFT — Friend List */}
-        <div style={{ width: 300, border: '2px solid #000',  background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-          <div style={{ padding: '16px 14px 10px', borderBottom: '1px solid #EDE8FF' }}>
+        {(!isMobile || !activeConv) && (
+          <div style={{ 
+            width: isMobile ? '100%' : 300, 
+            border: isMobile ? 'none' : '2px solid #000',  
+            background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            flexShrink: 0,
+            overflow: 'hidden'
+          }}>
+            <div style={{ padding: '16px 14px 10px', borderBottom: '1px solid #EDE8FF' }}>
             <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.2rem', color: '#1E1347' }}>💬 Messages</div>
             <div style={{ fontSize: '0.78rem', color: '#6B7280', marginTop: 2 }}>{friends.length} friend{friends.length !== 1 ? 's' : ''}</div>
           </div>
@@ -470,7 +554,15 @@ export default function Chat() {
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: '0.75rem', color: unread > 0 ? '#6C4BF6' : '#6B7280', fontWeight: unread > 0 ? 700 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>
-                          {conv?.last_message || 'Start a conversation 🐾'}
+                          {(() => {
+                            if (!conv) return 'Start a conversation 🐾'
+                            const clearedAt = conv.participant_1 === user.id ? conv.participant_1_cleared_at : conv.participant_2_cleared_at
+                            if (clearedAt && conv.last_message_at && new Date(conv.last_message_at) <= new Date(clearedAt)) {
+                               return 'No messages yet 🐾'
+                            }
+                            if (conv.last_message === '🐾 Shared a post') return `🐾 ${friend.pet_name} sent a post`
+                            return conv.last_message || 'Start a conversation 🐾'
+                          })()}
                         </span>
                         {unread > 0 && (
                           <span style={{
@@ -488,9 +580,22 @@ export default function Chat() {
             )}
           </div>
         </div>
+        )}
 
         {/* RIGHT — Chat Window */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))',border:'2px solid #000', position: 'relative' }}>
+        {(!isMobile || activeConv) && (
+        <div style={{ 
+          flex: 1, 
+          display: 'flex', 
+          flexDirection: 'column', 
+          background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))', 
+          border: isMobile ? 'none' : '2px solid #000',
+          borderLeft: isMobile ? 'none' : 'none',
+          position: 'relative', 
+          width: isMobile ? '100%' : 'auto',
+          minWidth: 0,
+          overflow: 'hidden'
+        }}>
           {!activeConv ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
               <div style={{ fontSize: '4rem' }}>🐾</div>
@@ -502,7 +607,10 @@ export default function Chat() {
           ) : (
             <>
               {/* Chat Header */}
-              <div style={{ padding: '12px 16px', borderBottom: '1px solid #EDE8FF', background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid #EDE8FF', background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+                {isMobile && (
+                  <button onClick={() => setActiveConv(null)} style={{ background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer', color: '#1E1347', marginRight: 4 }}>←</button>
+                )}
                 <div style={{
                   width: 42, height: 42, borderRadius: '50%', background: '#FFE8F0',
                   border: '2px solid #FF6B35', display: 'flex', alignItems: 'center',
@@ -522,10 +630,10 @@ export default function Chat() {
                 <button onClick={handleClearChat} style={{ background: '#FF4757', color: '#fff', border: 'none', borderRadius: 12, padding: '6px 12px', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'Nunito, sans-serif' }}>
                   Clear Chat
                 </button>
-              </div>
+               </div>
 
               {/* Messages */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: 6, minHeight: 0 }}>
                 {messages.length === 0 && (
                   <div style={{ textAlign: 'center', marginTop: 40 }}>
                     <div style={{ fontSize: '3rem', marginBottom: 8 }}>👋</div>
@@ -545,12 +653,19 @@ export default function Chat() {
                   const isLastFromSender = !messages[idx + 1] || messages[idx + 1].sender_id !== msg.sender_id
 
                   return (
-                    <div key={msg.id} 
-                      onMouseEnter={() => setHoveredMsgId(msg.id)}
-                      onMouseLeave={() => setHoveredMsgId(null)}
+                    <div key={msg.id}
+                      onTouchStart={(e) => handlePointerDown(e, msg)}
+                      onTouchEnd={handlePointerUp}
+                      onTouchMove={handlePointerUp}
+                      onMouseDown={(e) => handlePointerDown(e, msg)}
+                      onMouseUp={handlePointerUp}
+                      onMouseLeave={handlePointerUp}
+                      onContextMenu={(e) => handlePointerDown(e, msg)}
                       style={{
                       display: 'flex', flexDirection: isMe ? 'row-reverse' : 'row',
-                      alignItems: 'center', gap: 6, marginBottom: 2
+                      alignItems: 'center', gap: 6, marginBottom: 2,
+                      opacity: longPressMenu?.msg.id === msg.id ? 0.8 : 1,
+                      transition: 'opacity 0.2s'
                     }}>
                       {!isMe && (
                         <div style={{
@@ -579,8 +694,11 @@ export default function Chat() {
                             fontSize: '0.88rem', lineHeight: 1.5,
                             boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
                             border: isMe ? 'none' : '1px solid #EDE8FF',
+                            borderBottomRightRadius: isMe && !msg.shared_post_preview ? 4 : 18,
+                            borderBottomLeftRadius: !isMe && !msg.shared_post_preview ? 4 : 18,
+                            wordWrap: 'break-word',
                             wordBreak: 'break-word',
-                            marginBottom: msg.shared_post_preview ? 6 : 0
+                            whiteSpace: 'pre-wrap'
                           }}>
                             {msg.content}
                           </div>
@@ -647,16 +765,6 @@ export default function Chat() {
                           </div>
                         )}
                       </div>
-                      
-                      {/* Action Menu (Hover) */}
-                      {hoveredMsgId === msg.id && (
-                        <div style={{ display: 'flex', flexDirection: isMe ? 'row-reverse' : 'row', gap: 6, padding: '0 8px' }}>
-                          <button onClick={() => handleDeleteForMe(msg.id, msg.deleted_for)} title="Delete for me" style={{ background: 'rgba(255, 71, 87, 0.1)', color: '#FF4757', border: 'none', borderRadius: '50%', cursor: 'pointer', fontSize: '0.8rem', width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🗑️</button>
-                          {isMe && (
-                            <button onClick={() => handleUnsend(msg.id)} title="Unsend" style={{ background: 'rgba(108, 75, 246, 0.1)', color: '#6C4BF6', border: 'none', borderRadius: '50%', cursor: 'pointer', fontSize: '0.8rem', width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>↩️</button>
-                          )}
-                        </div>
-                      )}
                     </div>
                   )
                 })}
@@ -757,7 +865,31 @@ export default function Chat() {
             </>
           )}
         </div>
+        )}
       </div>
+
+      {/* Long Press Menu Overlay */}
+      {longPressMenu && (
+        <div onClick={() => setLongPressMenu(null)} onContextMenu={e => e.preventDefault()} style={{ position: 'fixed', inset: 0, zIndex: 10000 }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            position: 'absolute',
+            left: Math.min(longPressMenu.x, window.innerWidth - 180),
+            top: Math.min(longPressMenu.y, window.innerHeight - 120),
+            background: '#fff', borderRadius: 14, boxShadow: '0 8px 30px rgba(0,0,0,0.2)',
+            padding: 8, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 160,
+            border: '1px solid #EDE8FF'
+          }}>
+            <button onClick={() => { handleDeleteForMe(longPressMenu.msg.id, longPressMenu.msg.deleted_for); setLongPressMenu(null) }} style={{ padding: '12px 14px', background: 'transparent', border: 'none', textAlign: 'left', cursor: 'pointer', fontFamily: 'Nunito', fontSize: '0.9rem', color: '#1E1347', borderRadius: 8, fontWeight: 700 }} onMouseEnter={e => e.currentTarget.style.background = '#F9F5FF'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              🗑️ Delete for me
+            </button>
+            {longPressMenu.msg.sender_id === user.id && (
+              <button onClick={() => { handleUnsend(longPressMenu.msg.id); setLongPressMenu(null) }} style={{ padding: '12px 14px', background: 'transparent', border: 'none', textAlign: 'left', cursor: 'pointer', fontFamily: 'Nunito', fontSize: '0.9rem', color: '#FF4757', fontWeight: 800, borderRadius: 8 }} onMouseEnter={e => e.currentTarget.style.background = '#FFE8F0'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                ↩️ Unsend everyone
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
