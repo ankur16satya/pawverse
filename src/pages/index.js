@@ -113,7 +113,7 @@ export default function Home() {
     setError(''); setLoading(true)
     try {
       const { error: err } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-        redirectTo: `${window.location.origin}/?mode=reset_password`
+        redirectTo: `https://pawversesocial.com/?mode=reset_password`
       })
       if (err) throw err
       setSuccess('📧 Password reset email sent! Check your inbox and click the link.')

@@ -220,7 +220,7 @@ export default function Feed() {
   }
 
   const shareVia = (platform, post) => {
-    const origin = window.location.origin.replace('localhost:3000', window.location.host)
+    const origin = window.location.origin.replace('https://pawversesocial.com/', window.location.host)
     const url = `${origin}/post/${post.id}`
     const petName = post.pets?.pet_name||'a pet'
     const preview = post.content?post.content.slice(0,80):'Check out this cute post!'
