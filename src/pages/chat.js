@@ -475,7 +475,6 @@ export default function Chat() {
       overflow: 'hidden'
     }}>
       {(!isMobile || !activeConv) && <NavBar user={user} pet={pet} unreadMessages={totalUnread} />}
-
       <div style={{ 
         flex: 1, 
         maxWidth: 1000, 
@@ -504,18 +503,43 @@ export default function Chat() {
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto' }}>
-            {friends.length === 0 ? (
-              <div style={{ padding: 24, textAlign: 'center'}}>
-                <div style={{ fontSize: '2.5rem', marginBottom: 8, }}>🐾</div>
-                <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.95rem', color: '#1E1347', }}>No friends yet</div>
-                <p style={{ color: '#ffffffff', fontSize: '1rem', marginTop: 4 }}>Add friends first to start chatting!</p>
-                <button onClick={() => router.push('/friends')} className="btn-primary"
-                  style={{ marginTop: 10, padding: '7px 16px', fontSize: '0.8rem', borderRadius: 10 }}>
-                  👫 Find Friends
-                </button>
-              </div>
-            ) : (
-              friends.map(friend => {
+            {(() => {
+              // Determine visible and sorted friends
+              const processedFriends = friends.filter(friend => {
+                const conv = conversations.find(c => 
+                  (c.participant_1 === user.id && c.participant_2 === friend.user_id) ||
+                  (c.participant_2 === user.id && c.participant_1 === friend.user_id)
+                )
+                if (!conv) return true // Show brand new friends to start chat
+                
+                const clearedAt = conv.participant_1 === user.id ? conv.participant_1_cleared_at : conv.participant_2_cleared_at
+                if (clearedAt && conv.last_message_at && new Date(conv.last_message_at) <= new Date(clearedAt)) {
+                  return false // Completely hide from list if cleared
+                }
+                return true
+              }).sort((a, b) => {
+                const convA = conversations.find(c => (c.participant_1 === user.id && c.participant_2 === a.user_id) || (c.participant_2 === user.id && c.participant_1 === a.user_id))
+                const convB = conversations.find(c => (c.participant_1 === user.id && c.participant_2 === b.user_id) || (c.participant_2 === user.id && c.participant_1 === b.user_id))
+                const timeA = convA?.last_message_at ? new Date(convA.last_message_at).getTime() : 0
+                const timeB = convB?.last_message_at ? new Date(convB.last_message_at).getTime() : 0
+                return timeB - timeA // Descending: Newest first
+              })
+
+              if (processedFriends.length === 0) {
+                return (
+                  <div style={{ padding: 24, textAlign: 'center'}}>
+                    <div style={{ fontSize: '2.5rem', marginBottom: 8, }}>🐾</div>
+                    <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.95rem', color: '#1E1347', }}>No friends yet</div>
+                    <p style={{ color: '#ffffffff', fontSize: '1rem', marginTop: 4 }}>Add friends first to start chatting!</p>
+                    <button onClick={() => router.push('/friends')} className="btn-primary"
+                      style={{ marginTop: 10, padding: '7px 16px', fontSize: '0.8rem', borderRadius: 10 }}>
+                      👫 Find Friends
+                    </button>
+                  </div>
+                )
+              }
+
+              return processedFriends.map(friend => {
                 const conv = conversations.find(c =>
                   (c.participant_1 === user.id && c.participant_2 === friend.user_id) ||
                   (c.participant_2 === user.id && c.participant_1 === friend.user_id)
@@ -577,7 +601,7 @@ export default function Chat() {
                   </div>
                 )
               })
-            )}
+            })()}
           </div>
         </div>
         )}
