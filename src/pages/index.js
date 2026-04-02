@@ -14,6 +14,8 @@ export default function Home() {
   const [success, setSuccess] = useState('')
 
   const [ownerName, setOwnerName] = useState('')
+  const [nameSuggestions, setNameSuggestions] = useState([])
+  const [checkingName, setCheckingName] = useState(false)
   const [petName, setPetName] = useState('')
   const [petType, setPetType] = useState('🐶 Dog')
   const [petBreed, setPetBreed] = useState('')
@@ -21,11 +23,30 @@ export default function Home() {
   const [password, setPassword] = useState('')
   const [loginEmail, setLoginEmail] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
+  const [resetEmail, setResetEmail] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) router.push('/feed')
+      if (session) {
+        // Check if user came from password reset link
+        const hash = window.location.hash
+        const params = new URLSearchParams(window.location.search)
+        if (hash.includes('type=recovery') || params.get('mode') === 'reset_password') {
+          setMode('update_password')
+        } else {
+          router.push('/feed')
+        }
+      }
     })
+    // Handle auth state change for password reset
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setMode('update_password')
+      }
+    })
+    return () => subscription.unsubscribe()
   }, [])
 
   const handleSignup = async (e) => {
@@ -66,6 +87,55 @@ export default function Home() {
         setSuccess('🎉 Account created! Please check your email to confirm, then sign in.')
       }
       setMode('login')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const checkNameAvailability = async (name) => {
+    if (!name || name.length < 2) { setNameSuggestions([]); return }
+    setCheckingName(true)
+    const { data } = await supabase.from('pets').select('owner_name').ilike('owner_name', name)
+    const taken = (data || []).some(p => p.owner_name.toLowerCase() === name.toLowerCase())
+    if (taken) {
+      const num = () => Math.floor(1000 + Math.random() * 9000)
+      setNameSuggestions([`${name}${num()}`, `${name}_pet`, `${name}${num()}`, `${name}official`])
+    } else {
+      setNameSuggestions([])
+    }
+    setCheckingName(false)
+  }
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault()
+    setError(''); setLoading(true)
+    try {
+      const { error: err } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+        redirectTo: `${window.location.origin}/?mode=reset_password`
+      })
+      if (err) throw err
+      setSuccess('📧 Password reset email sent! Check your inbox and click the link.')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleUpdatePassword = async (e) => {
+    e.preventDefault()
+    setError('')
+    if (newPassword !== confirmPassword) { setError('Passwords do not match!'); return }
+    if (newPassword.length < 6) { setError('Password must be at least 6 characters.'); return }
+    setLoading(true)
+    try {
+      const { error: err } = await supabase.auth.updateUser({ password: newPassword })
+      if (err) throw err
+      setSuccess('✅ Password updated successfully! You can now sign in with your new password.')
+      setMode('login')
+      setNewPassword(''); setConfirmPassword('')
     } catch (err) {
       setError(err.message)
     } finally {
@@ -120,8 +190,22 @@ export default function Home() {
             {error && <div style={{ background: '#FFDCE0', color: '#FF4757', padding: '8px 12px', borderRadius: 8, fontSize: '0.82rem', marginBottom: 8 }}>{error}</div>}
             {success && <div style={{ background: '#E8F8E8', color: '#22C55E', padding: '8px 12px', borderRadius: 8, fontSize: '0.82rem', marginBottom: 8 }}>{success}</div>}
             <form onSubmit={handleSignup}>
-              <label className="label">Your Name</label>
-              <input className="input" value={ownerName} onChange={e => setOwnerName(e.target.value)} placeholder="e.g. Priya Sharma" required />
+              <label className="label">User name</label>
+              <input className="input" value={ownerName} onChange={e => { setOwnerName(e.target.value); clearTimeout(window._nameTimer); window._nameTimer = setTimeout(() => checkNameAvailability(e.target.value), 600) }} placeholder="e.g. Priya Sharma" required />
+              {checkingName && <div style={{ fontSize: '0.72rem', color: '#9CA3AF', marginTop: 3 }}>Checking availability...</div>}
+              {nameSuggestions.length > 0 && (
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ fontSize: '0.72rem', color: '#FF4757', fontWeight: 700, marginBottom: 4 }}>⚠️ This name is taken! Try one of these:</div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {nameSuggestions.map(s => (
+                      <span key={s} onClick={() => { setOwnerName(s); setNameSuggestions([]) }}
+                        style={{ background: '#F0EBFF', border: '1px solid #6C4BF6', borderRadius: 20, padding: '3px 10px', fontSize: '0.75rem', fontWeight: 700, color: '#6C4BF6', cursor: 'pointer' }}>
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
               <label className="label">Your Pet's Name 🐾</label>
               <input className="input" value={petName} onChange={e => setPetName(e.target.value)} placeholder="e.g. Whiskers" required />
               <label className="label">Pet Type</label>
@@ -159,10 +243,50 @@ export default function Home() {
                 {loading ? 'Signing in...' : 'Sign In →'}
               </button>
             </form>
-            <p style={{ textAlign: 'center', marginTop: 10, fontSize: '0.78rem', color: '#6B7280' }}>
+            <p style={{ textAlign: 'center', marginTop: 8, fontSize: '0.78rem' }}>
+              <span onClick={() => { setMode('forgot'); setError(''); setSuccess('') }} style={{ color: '#6C4BF6', fontWeight: 700, cursor: 'pointer' }}>🔑 Forgot Password?</span>
+            </p>
+            <p style={{ textAlign: 'center', marginTop: 4, fontSize: '0.78rem', color: '#6B7280' }}>
               New here?{' '}
               <span onClick={() => { setMode('signup'); setError('') }} style={{ color: '#FF6B35', fontWeight: 700, cursor: 'pointer' }}>Create account</span>
             </p>
+          </div>
+        )}
+
+        {mode === 'forgot' && (
+          <div className="card" style={{ marginTop: 16, textAlign: 'left' }}>
+            <h2 style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.35rem', textAlign: 'center', marginBottom: 8 }}>🔑 Reset Password</h2>
+            <p style={{ textAlign: 'center', color: '#6B7280', fontSize: '0.8rem', marginBottom: 12 }}>Enter your email and we'll send you a reset link</p>
+            {error && <div style={{ background: '#FFDCE0', color: '#FF4757', padding: '8px 12px', borderRadius: 8, fontSize: '0.82rem', marginBottom: 8 }}>{error}</div>}
+            {success && <div style={{ background: '#E8F8E8', color: '#22C55E', padding: '8px 12px', borderRadius: 8, fontSize: '0.82rem', marginBottom: 8 }}>{success}</div>}
+            <form onSubmit={handleForgotPassword}>
+              <label className="label">Your Email</label>
+              <input className="input" type="email" value={resetEmail} onChange={e => setResetEmail(e.target.value)} placeholder="you@email.com" required />
+              <button type="submit" className="btn-primary" disabled={loading} style={{ width: '100%', marginTop: 16, padding: 12, fontSize: '0.95rem', borderRadius: 12 }}>
+                {loading ? 'Sending...' : '📧 Send Reset Link'}
+              </button>
+            </form>
+            <p style={{ textAlign: 'center', marginTop: 10, fontSize: '0.78rem', color: '#6B7280' }}>
+              <span onClick={() => { setMode('login'); setError(''); setSuccess('') }} style={{ color: '#FF6B35', fontWeight: 700, cursor: 'pointer' }}>← Back to Sign In</span>
+            </p>
+          </div>
+        )}
+
+        {mode === 'update_password' && (
+          <div className="card" style={{ marginTop: 16, textAlign: 'left' }}>
+            <h2 style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.35rem', textAlign: 'center', marginBottom: 8 }}>🔐 Set New Password</h2>
+            <p style={{ textAlign: 'center', color: '#6B7280', fontSize: '0.8rem', marginBottom: 12 }}>Choose a strong new password for your account</p>
+            {error && <div style={{ background: '#FFDCE0', color: '#FF4757', padding: '8px 12px', borderRadius: 8, fontSize: '0.82rem', marginBottom: 8 }}>{error}</div>}
+            {success && <div style={{ background: '#E8F8E8', color: '#22C55E', padding: '8px 12px', borderRadius: 8, fontSize: '0.82rem', marginBottom: 8 }}>{success}</div>}
+            <form onSubmit={handleUpdatePassword}>
+              <label className="label">New Password</label>
+              <input className="input" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="At least 6 characters" required />
+              <label className="label">Confirm New Password</label>
+              <input className="input" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Repeat your new password" required />
+              <button type="submit" className="btn-primary" disabled={loading} style={{ width: '100%', marginTop: 16, padding: 12, fontSize: '0.95rem', borderRadius: 12 }}>
+                {loading ? 'Updating...' : '✅ Update Password'}
+              </button>
+            </form>
           </div>
         )}
       </div>

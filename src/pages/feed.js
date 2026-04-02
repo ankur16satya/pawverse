@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
 
 const EMOJIS = ['😀','😂','🥰','😍','🤩','😎','🥳','😢','😤','🤔','🤗','😜','🥺','❤️','🔥','✨','🎉','👍','👎','🐾','🐶','🐱','🌸','🌈']
+const FEELINGS = ['😀 Happy','😍 Loved','🥳 Excited','😎 Cool','😢 Sad','😤 Annoyed','🤔 Thoughtful','🥺 Grateful','🔥 Hyped','😴 Tired','🤒 Sick','🥰 Blessed']
+const POPULAR_LOCATIONS = ['Mumbai, India','Delhi, India','Bengaluru, India','Chennai, India','Hyderabad, India','Pune, India','Kolkata, India','Jaipur, India','Dehradun, India','Chandigarh, India']
 
 export default function Feed() {
   const router = useRouter()
@@ -18,6 +20,14 @@ export default function Feed() {
   const [imagePreview, setImagePreview] = useState(null)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [friendStatuses, setFriendStatuses] = useState({})
+  const [shareModal, setShareModal] = useState(null)
+  const [shareToFriendsModal, setShareToFriendsModal] = useState(null)
+  const [friends, setFriends] = useState([])
+  const [postLocation, setPostLocation] = useState('')
+  const [postFeeling, setPostFeeling] = useState('')
+  const [showLocationPicker, setShowLocationPicker] = useState(false)
+  const [showFeelingPicker, setShowFeelingPicker] = useState(false)
+  const [locationSearch, setLocationSearch] = useState('')
   const [lightboxImg, setLightboxImg] = useState(null)
   const [activeComments, setActiveComments] = useState({})
   const [commentTexts, setCommentTexts] = useState({})
@@ -27,6 +37,7 @@ export default function Feed() {
   const [editText, setEditText] = useState('')
   const fileInputRef = useRef(null)
   const menuRef = useRef(null)
+  const textareaRef = useRef(null)
 
   useEffect(() => { init() }, [])
 
@@ -73,6 +84,16 @@ export default function Feed() {
     ;(sentRequests || []).forEach(r => { statuses[r.receiver_id] = r.status })
     ;(receivedRequests || []).forEach(r => { statuses[r.sender_id] = r.status })
     setFriendStatuses(statuses)
+
+    // Fetch friends list for share-to-friends modal
+    const friendIds = [
+      ...(sentRequests || []).filter(r => r.status === 'accepted').map(r => r.receiver_id),
+      ...(receivedRequests || []).filter(r => r.status === 'accepted').map(r => r.sender_id)
+    ]
+    if (friendIds.length > 0) {
+      const { data: friendPets } = await supabase.from('pets').select('*').in('user_id', friendIds)
+      setFriends(friendPets || [])
+    }
 // Real-time listener for post likes/updates
 const postsChannel = supabase
   .channel(`feed-posts-${session.user.id}`)
@@ -104,18 +125,28 @@ const postsChannel = supabase
   }
 
   const fetchPosts = async () => {
-  const { data: postsData } = await supabase
-    .from('posts')
-    .select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id)')
-    .order('created_at', { ascending: false })
-    .limit(20)
+    const { data: postsData } = await supabase
+      .from('posts')
+      .select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id)')
+      .order('created_at', { ascending: false })
+      .limit(20)
 
-  // Filter out posts this user has hidden locally
-  const hiddenPosts = JSON.parse(localStorage.getItem('hidden_posts') || '[]')
-  const filtered = (postsData || []).filter(p => !hiddenPosts.includes(p.id))
+    const { data: reelsData } = await supabase
+      .from('reels')
+      .select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id)')
+      .order('created_at', { ascending: false })
+      .limit(20)
 
-  setPosts(filtered)
-}
+    const mixed = [...(postsData || []), ...(reelsData || [])]
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, 20)
+
+    // Filter out posts this user has hidden locally
+    const hiddenPosts = JSON.parse(localStorage.getItem('hidden_posts') || '[]')
+    const filtered = mixed.filter(p => !hiddenPosts.includes(p.id))
+
+    setPosts(filtered)
+  }
 
   const fetchComments = async (postId) => {
     const { data } = await supabase
@@ -261,17 +292,26 @@ const postsChannel = supabase
         setUploadingImage(false)
       }
 
+      // Extract hashtags from text
+      const hashtagMatches = postText.match(/#[\w]+/g) || []
+      const hashtags = hashtagMatches.map(h => h.toLowerCase())
+
       const { data, error } = await supabase.from('posts').insert({
         pet_id: pet.id,
         content: postText,
         image_url: imageUrl,
         hidden: false,
         edited: false,
+        location: postLocation || null,
+        feeling: postFeeling || null,
+        hashtags: hashtags.length > 0 ? hashtags : null,
       }).select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id)').single()
 
       if (!error && data) {
         setPosts([data, ...posts])
         setPostText('')
+        setPostLocation('')
+        setPostFeeling('')
         removeImage()
         await supabase.from('pets')
           .update({ paw_coins: (pet.paw_coins || 0) + 10 }).eq('id', pet.id)
@@ -342,12 +382,7 @@ const postsChannel = supabase
 }
 
   const handleShare = (post) => {
-    const url = `${window.location.origin}/post/${post.id}`
-    navigator.clipboard.writeText(url).then(() => {
-      alert('Post link copied to clipboard! 🔗')
-    }).catch(() => {
-      alert(`Share this link: ${url}`)
-    })
+    setShareModal(post)
     // Update share count
     supabase.from('posts')
       .update({ shares_count: (post.shares_count || 0) + 1 })
@@ -355,6 +390,71 @@ const postsChannel = supabase
     setPosts(prev => prev.map(p =>
       p.id === post.id ? { ...p, shares_count: (p.shares_count || 0) + 1 } : p
     ))
+  }
+
+  const shareVia = (platform, post) => {
+    const origin = window.location.origin.replace('localhost:3000', window.location.host)
+    const url = `${origin}/post/${post.id}`
+    const petName = post.pets?.pet_name || 'a pet'
+    const preview = post.content ? post.content.slice(0, 80) : 'Check out this cute post!'
+    const text = `🐾 ${petName} on PawVerse: "${preview}" — See the full post:`
+    const links = {
+      whatsapp: `https://wa.me/?text=${encodeURIComponent(text + '\n' + url)}`,
+      telegram: `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`,
+      twitter: `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`,
+      facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`,
+      email: `mailto:?subject=${encodeURIComponent(`${petName} shared something on PawVerse!`)}&body=${encodeURIComponent(text + '\n\n' + url)}`,
+    }
+    if (platform === 'copy') {
+      navigator.clipboard.writeText(url).then(() => alert('✅ Link copied to clipboard!'))
+    } else if (platform === 'friends') {
+      setShareToFriendsModal(post)
+      setShareModal(null)
+    } else {
+      window.open(links[platform], '_blank')
+    }
+  }
+
+  const shareToFriend = async (friend, post) => {
+    const { data: existingConv } = await supabase
+      .from('conversations')
+      .select('id')
+      .or(`and(participant_1.eq.${user.id},participant_2.eq.${friend.user_id}),and(participant_1.eq.${friend.user_id},participant_2.eq.${user.id})`)
+      .single()
+
+    let convId = existingConv?.id
+    if (!convId) {
+      const { data: newConv } = await supabase.from('conversations').insert({
+        participant_1: user.id, participant_2: friend.user_id
+      }).select().single()
+      convId = newConv?.id
+    }
+    if (!convId) { alert('Could not open conversation'); return }
+
+    // Send as a structured shared post message
+    await supabase.from('messages').insert({
+      conversation_id: convId,
+      sender_id: user.id,
+      content: `🐾 ${pet.pet_name} shared a post with you`,
+      shared_post_id: post.id,
+      shared_post_preview: JSON.stringify({
+        id: post.id,
+        content: post.content?.slice(0, 120) || '',
+        image_url: post.image_url || null,
+        pet_name: post.pets?.pet_name || '',
+        pet_emoji: post.pets?.emoji || '🐾',
+        avatar_url: post.pets?.avatar_url || null,
+        owner_name: post.pets?.owner_name || '',
+      }),
+      is_read: false,
+    })
+    await supabase.from('notifications').insert({
+      user_id: friend.user_id,
+      type: 'message',
+      message: `${pet.pet_name} shared a post with you! 🐾`,
+    })
+    alert(`✅ Post shared with ${friend.pet_name}!`)
+    setShareToFriendsModal(null)
   }
 
   const handleEditPost = async (post) => {
@@ -441,6 +541,35 @@ const handleHidePost = (post) => {
     const h = Math.floor(m / 60)
     if (h < 24) return `${h}h ago`
     return `${Math.floor(h / 24)}d ago`
+  }
+
+  // Compute trending tags dynamically
+  const tagsCount = {}
+  posts.forEach(p => {
+    if (p.hashtags) {
+      p.hashtags.forEach(h => {
+        tagsCount[h] = (tagsCount[h] || 0) + 1
+      })
+    }
+  })
+  let trendingTags = Object.entries(tagsCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(x => x[0])
+  if (trendingTags.length === 0) {
+    trendingTags = ['#PawParents', '#CatsOfPawVerse', '#DogsRule', '#BunnyLife', '#AdoptDontShop']
+  }
+
+  // Tag suggestion logic
+  const tagMatch = postText.match(/#([\w]*)$/)
+  const currentTagSearch = tagMatch ? `#${tagMatch[1]}` : null
+  const tagSuggestions = currentTagSearch
+    ? trendingTags.filter(t => t.toLowerCase().startsWith(currentTagSearch.toLowerCase()))
+    : []
+
+  const insertTag = (tag) => {
+    setPostText(postText.replace(/#([\w]*)$/, tag + ' '))
+    if (textareaRef.current) textareaRef.current.focus()
   }
 
   if (loading) return (
@@ -549,16 +678,29 @@ const handleHidePost = (post) => {
                   ? <img src={pet.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   : pet?.emoji || '🐾'}
               </div>
-              <textarea
-                value={postText}
-                onChange={e => setPostText(e.target.value)}
-                placeholder={`What's ${pet?.pet_name || 'your pet'} up to today? 🐾`}
-                style={{
-                  flex: 1, background: '#F3F0FF', border: 'none', borderRadius: 16,
-                  padding: '10px 14px', fontFamily: 'Nunito, sans-serif', fontSize: '0.9rem',
-                  color: '#1E1347', outline: 'none', resize: 'none', minHeight: 70
-                }}
-              />
+              <div style={{ flex: 1, position: 'relative' }}>
+                <textarea
+                  ref={textareaRef}
+                  value={postText}
+                  onChange={e => setPostText(e.target.value)}
+                  placeholder={`What's ${pet?.pet_name || 'your pet'} up to today? 🐾`}
+                  style={{
+                    width: '100%', background: '#F3F0FF', border: 'none', borderRadius: 16,
+                    padding: '10px 14px', fontFamily: 'Nunito, sans-serif', fontSize: '0.9rem',
+                    color: '#1E1347', outline: 'none', resize: 'none', minHeight: 70, boxSizing: 'border-box'
+                  }}
+                />
+                {tagSuggestions.length > 0 && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.12)', border: '1px solid #EDE8FF', zIndex: 100, padding: 8, marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    <div style={{ width: '100%', fontSize: '0.72rem', fontWeight: 800, color: '#6B7280', marginBottom: 2 }}>Trending Tags</div>
+                    {tagSuggestions.map(tag => (
+                      <span key={tag} onClick={() => insertTag(tag)} style={{ background: '#F0EBFF', color: '#6C4BF6', padding: '4px 10px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {imagePreview && (
@@ -584,11 +726,17 @@ const handleHidePost = (post) => {
                   fontSize: '0.75rem', color: selectedImage ? '#22C55E' : '#6C4BF6'
                 }}>📸 {selectedImage ? 'Photo Added ✓' : 'Photo'}</button>
                 {['📍 Location', '😊 Feeling'].map(x => (
-                  <button key={x} style={{
-                    padding: '5px 10px', border: 'none', background: '#F3F0FF', borderRadius: 8,
-                    cursor: 'pointer', fontFamily: 'Nunito, sans-serif', fontWeight: 700,
-                    fontSize: '0.75rem', color: '#6C4BF6'
-                  }}>{x}</button>
+                  <button key={x} onClick={() => {
+                    if (x === '📍 Location') { setShowLocationPicker(p => !p); setShowFeelingPicker(false) }
+                    else { setShowFeelingPicker(p => !p); setShowLocationPicker(false) }
+                  }} style={{
+                    padding: '5px 10px', border: 'none',
+                    background: (x === '📍 Location' && postLocation) || (x === '😊 Feeling' && postFeeling) ? '#D4F0D4' : '#F3F0FF',
+                    borderRadius: 8, cursor: 'pointer', fontFamily: 'Nunito, sans-serif', fontWeight: 700,
+                    fontSize: '0.75rem', color: (x === '📍 Location' && postLocation) || (x === '😊 Feeling' && postFeeling) ? '#16A34A' : '#6C4BF6'
+                  }}>
+                    {x === '📍 Location' ? (postLocation ? `📍 ${postLocation.split(',')[0]}` : '📍 Location') : (postFeeling ? postFeeling : '😊 Feeling')}
+                  </button>
                 ))}
               </div>
               <button onClick={handlePost} disabled={posting || (!postText.trim() && !selectedImage)}
@@ -597,6 +745,48 @@ const handleHidePost = (post) => {
                 {uploadingImage ? '📤 Uploading...' : posting ? 'Posting...' : 'Post 🐾'}
               </button>
             </div>
+
+            {/* Location Picker */}
+            {showLocationPicker && (
+              <div style={{ marginTop: 10, background: '#F9F5FF', borderRadius: 12, padding: 10 }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#6C4BF6', marginBottom: 6 }}>📍 Select or type location</div>
+                <input value={locationSearch} onChange={e => setLocationSearch(e.target.value)} placeholder="Search city..." style={{ width: '100%', padding: '6px 10px', borderRadius: 8, border: '1px solid #EDE8FF', fontSize: '0.82rem', marginBottom: 6, boxSizing: 'border-box' }} />
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {POPULAR_LOCATIONS.filter(l => l.toLowerCase().includes(locationSearch.toLowerCase())).map(loc => (
+                    <span key={loc} onClick={() => { setPostLocation(loc); setShowLocationPicker(false); setLocationSearch('') }}
+                      style={{ background: postLocation === loc ? '#6C4BF6' : '#EDE8FF', color: postLocation === loc ? '#fff' : '#6C4BF6', padding: '4px 10px', borderRadius: 20, fontSize: '0.73rem', fontWeight: 700, cursor: 'pointer' }}>{loc}</span>
+                  ))}
+                  {locationSearch && !POPULAR_LOCATIONS.includes(locationSearch) && (
+                    <span onClick={() => { setPostLocation(locationSearch); setShowLocationPicker(false); setLocationSearch('') }}
+                      style={{ background: '#FF6B35', color: '#fff', padding: '4px 10px', borderRadius: 20, fontSize: '0.73rem', fontWeight: 700, cursor: 'pointer' }}>+ Use "{locationSearch}"</span>
+                  )}
+                </div>
+                {postLocation && <div onClick={() => { setPostLocation(''); setShowLocationPicker(false) }} style={{ marginTop: 6, fontSize: '0.72rem', color: '#FF4757', cursor: 'pointer', fontWeight: 700 }}>✕ Remove location</div>}
+              </div>
+            )}
+
+            {/* Feeling Picker */}
+            {showFeelingPicker && (
+              <div style={{ marginTop: 10, background: '#FFF8F0', borderRadius: 12, padding: 10 }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#FF6B35', marginBottom: 6 }}>😊 How are you feeling?</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {FEELINGS.map(f => (
+                    <span key={f} onClick={() => { setPostFeeling(f); setShowFeelingPicker(false) }}
+                      style={{ background: postFeeling === f ? '#FF6B35' : '#FFE8CC', color: postFeeling === f ? '#fff' : '#FF6B35', padding: '4px 10px', borderRadius: 20, fontSize: '0.73rem', fontWeight: 700, cursor: 'pointer' }}>{f}</span>
+                  ))}
+                </div>
+                {postFeeling && <div onClick={() => { setPostFeeling(''); setShowFeelingPicker(false) }} style={{ marginTop: 6, fontSize: '0.72rem', color: '#FF4757', cursor: 'pointer', fontWeight: 700 }}>✕ Remove feeling</div>}
+              </div>
+            )}
+
+            {/* Selected tags display */}
+            {(postLocation || postFeeling) && (
+              <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {postLocation && <span style={{ background: '#E8F5FF', color: '#0EA5E9', padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700 }}>📍 {postLocation}</span>}
+                {postFeeling && <span style={{ background: '#FFF0E8', color: '#FF6B35', padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700 }}>{postFeeling}</span>}
+              </div>
+            )}
+            <div style={{ marginTop: 6, fontSize: '0.7rem', color: '#9CA3AF' }}>💡 Tip: Use #hashtags in your text to tag topics</div>
           </div>
 
           {posts.length === 0 && (
@@ -723,8 +913,22 @@ const handleHidePost = (post) => {
                     </div>
                   </div>
                 ) : (
-                  post.content && (
-                    <p style={{ lineHeight: 1.65, fontSize: '0.9rem', marginBottom: 10 }}>{post.content}</p>
+                  (post.content || post.caption) && (
+                    <div>
+                      <p style={{ lineHeight: 1.65, fontSize: '0.9rem', marginBottom: 6 }}>
+                        {(post.content || post.caption).split(/(\s+)/).map((word, i) =>
+                          word.startsWith('#')
+                            ? <span key={i} style={{ color: '#6C4BF6', fontWeight: 700, cursor: 'pointer' }} onClick={() => router.push(`/feed?tag=${word.slice(1)}`)}>{word}</span>
+                            : word
+                        )}
+                      </p>
+                      {(post.location || post.feeling) && (
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                          {post.location && <span style={{ background: '#E8F5FF', color: '#0EA5E9', padding: '2px 9px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700 }}>📍 {post.location}</span>}
+                          {post.feeling && <span style={{ background: '#FFF0E8', color: '#FF6B35', padding: '2px 9px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700 }}>{post.feeling}</span>}
+                        </div>
+                        )}
+                    </div>
                   )
                 )}
 
@@ -754,7 +958,13 @@ const handleHidePost = (post) => {
       onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
     />
   </div>
-)}
+                )}
+                
+                {post.video_url && (
+                  <div style={{ marginBottom: 10, borderRadius: 14, overflow: 'hidden', background: '#111', maxHeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <video src={post.video_url} autoPlay muted loop playsInline controls style={{ width: '100%', maxHeight: 500, objectFit: 'contain', display: 'block' }} />
+                  </div>
+                )}
 
                 {/* Stats */}
                 <div style={{ fontSize: '0.78rem', color: '#6B7280', display: 'flex', justifyContent: 'space-between', marginBottom: 7 }}>
@@ -996,16 +1206,78 @@ const handleHidePost = (post) => {
 
           <div className="card" style={{ background: 'linear-gradient(135deg, #FFF0E8, #F0EBFF)', border: 'none' }}>
             <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.9rem', marginBottom: 8 }}>🔥 Trending Tags</div>
-            {['#PawParents', '#CatsOfPawVerse', '#DogsRule', '#BunnyLife', '#AdoptDontShop'].map((t, i) => (
-              <span key={t} style={{
-                display: 'inline-block', padding: '3px 9px', borderRadius: 20,
-                fontSize: '0.72rem', fontWeight: 800, margin: 2, cursor: 'pointer',
-                background: ['#FFE8CC', '#E8F8E8', '#F0EBFF', '#FFE8F0', '#E8F4FF'][i]
-              }}>{t}</span>
-            ))}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {trendingTags.map((t, i) => (
+                <span key={t} onClick={() => router.push(`/feed?tag=${t.replace('#','')}`)} style={{
+                  display: 'inline-block', padding: '3px 9px', borderRadius: 20,
+                  fontSize: '0.72rem', fontWeight: 800, margin: 2, cursor: 'pointer',
+                  background: ['#FFE8CC', '#E8F8E8', '#F0EBFF', '#FFE8F0', '#E8F4FF'][i % 5]
+                }}>{t}</span>
+              ))}
+            </div>
           </div>
         </div>
       </div>
+
+      {/* ── SHARE MODAL ── */}
+      {shareModal && (
+        <div onClick={() => setShareModal(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '24px 24px 16px 16px', width: '100%', maxWidth: 480, padding: 24, boxShadow: '0 -8px 40px rgba(0,0,0,0.18)' }}>
+            <div style={{ textAlign: 'center', marginBottom: 18 }}>
+              <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.15rem', color: '#1E1347' }}>🔗 Share Post</div>
+              <div style={{ fontSize: '0.78rem', color: '#6B7280', marginTop: 3 }}>Choose how you want to share</div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+              {[
+                { id: 'whatsapp', emoji: '💬', label: 'WhatsApp', color: '#25D366', bg: '#E8FFF0' },
+                { id: 'telegram', emoji: '✈️', label: 'Telegram', color: '#0088CC', bg: '#E8F6FF' },
+                { id: 'twitter', emoji: '🐦', label: 'Twitter', color: '#1DA1F2', bg: '#E8F5FF' },
+                { id: 'facebook', emoji: '📘', label: 'Facebook', color: '#1877F2', bg: '#EAF0FF' },
+                { id: 'friends', emoji: '🐾', label: 'Friends', color: '#6C4BF6', bg: '#F0EBFF' },
+                { id: 'email', emoji: '📧', label: 'Email', color: '#FF6B35', bg: '#FFF0E8' },
+                { id: 'copy', emoji: '📋', label: 'Copy Link', color: '#374151', bg: '#F3F4F6' },
+              ].map(opt => (
+                <div key={opt.id} onClick={() => shareVia(opt.id, shareModal)}
+                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '12px 8px', borderRadius: 14, background: opt.bg, cursor: 'pointer', transition: 'transform 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.07)'}
+                  onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}>
+                  <div style={{ fontSize: '1.6rem' }}>{opt.emoji}</div>
+                  <div style={{ fontSize: '0.68rem', fontWeight: 800, color: opt.color }}>{opt.label}</div>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setShareModal(null)} style={{ width: '100%', padding: '10px', background: '#F3F0FF', border: 'none', borderRadius: 12, fontFamily: 'Nunito, sans-serif', fontWeight: 700, fontSize: '0.9rem', color: '#6C4BF6', cursor: 'pointer' }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── SHARE TO FRIENDS MODAL ── */}
+      {shareToFriendsModal && (
+        <div onClick={() => setShareToFriendsModal(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 400, padding: 24, boxShadow: '0 8px 40px rgba(0,0,0,0.18)', maxHeight: '80vh', overflowY: 'auto' }}>
+            <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.1rem', marginBottom: 14, color: '#1E1347' }}>🐾 Share with Friends</div>
+            {friends.length === 0 ? (
+              <div style={{ textAlign: 'center', color: '#6B7280', padding: '20px 0' }}>
+                <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>🤷</div>
+                <div style={{ fontWeight: 700 }}>No friends yet!</div>
+                <div style={{ fontSize: '0.8rem', marginTop: 4 }}>Add friends first to share posts with them.</div>
+              </div>
+            ) : friends.map(f => (
+              <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #F3F0FF' }}>
+                <div style={{ width: 42, height: 42, borderRadius: '50%', background: '#F0EBFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem', border: '2px solid #EDE8FF', overflow: 'hidden', flexShrink: 0 }}>
+                  {f.avatar_url ? <img src={f.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="av" /> : f.emoji}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#1E1347' }}>{f.pet_name}</div>
+                  <div style={{ fontSize: '0.72rem', color: '#6B7280' }}>by {f.owner_name}</div>
+                </div>
+                <button onClick={() => shareToFriend(f, shareToFriendsModal)} className="btn-primary" style={{ padding: '6px 14px', fontSize: '0.78rem', borderRadius: 10 }}>Send 📤</button>
+              </div>
+            ))}
+            <button onClick={() => setShareToFriendsModal(null)} style={{ width: '100%', marginTop: 14, padding: '10px', background: '#F3F0FF', border: 'none', borderRadius: 12, fontFamily: 'Nunito, sans-serif', fontWeight: 700, fontSize: '0.9rem', color: '#6C4BF6', cursor: 'pointer' }}>Close</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

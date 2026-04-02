@@ -508,7 +508,48 @@ export default function Chat() {
                           <img src={msg.image_url} alt="shared"
                             style={{ maxWidth: 220, maxHeight: 220, borderRadius: 14, objectFit: 'cover', display: 'block', border: '2px solid #EDE8FF', marginBottom: msg.content ? 4 : 0 }} />
                         )}
-                        {msg.content && (
+                        {/* Shared Post Card */}
+                        {msg.shared_post_preview && (() => {
+                          let preview = null
+                          try { preview = JSON.parse(msg.shared_post_preview) } catch(e) {}
+                          if (!preview) return null
+                          return (
+                            <div
+                              onClick={() => router.push(`/post/${preview.id}`)}
+                              style={{
+                                background: isMe ? 'rgba(255,255,255,0.15)' : '#F9F5FF',
+                                border: isMe ? '1px solid rgba(255,255,255,0.3)' : '1px solid #EDE8FF',
+                                borderRadius: 14, overflow: 'hidden', maxWidth: 240,
+                                cursor: 'pointer', marginBottom: msg.content ? 6 : 0,
+                                transition: 'transform 0.15s'
+                              }}
+                              onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.02)'}
+                              onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                            >
+                              {preview.image_url && (
+                                <img src={preview.image_url} alt="post"
+                                  style={{ width: '100%', height: 130, objectFit: 'cover', display: 'block' }} />
+                              )}
+                              <div style={{ padding: '8px 10px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                                  <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#FFE8F0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', overflow: 'hidden', flexShrink: 0, border: '1.5px solid #FF6B35' }}>
+                                    {preview.avatar_url ? <img src={preview.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="av" /> : preview.pet_emoji}
+                                  </div>
+                                  <span style={{ fontWeight: 800, fontSize: '0.72rem', color: isMe ? 'rgba(255,255,255,0.9)' : '#6C4BF6' }}>{preview.pet_name}</span>
+                                </div>
+                                {preview.content && (
+                                  <p style={{ fontSize: '0.75rem', color: isMe ? 'rgba(255,255,255,0.85)' : '#374151', margin: 0, lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                                    {preview.content}
+                                  </p>
+                                )}
+                                <div style={{ marginTop: 5, fontSize: '0.65rem', fontWeight: 700, color: isMe ? 'rgba(255,255,255,0.7)' : '#9CA3AF' }}>
+                                  🐾 PawVerse Post · Tap to view
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })()}
+                        {msg.content && !(msg.shared_post_preview) && (
                           <div style={{
                             padding: '9px 13px',
                             background: isMe ? 'linear-gradient(135deg, #FF6B35, #6C4BF6)' : '#fff',

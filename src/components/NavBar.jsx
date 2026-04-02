@@ -9,7 +9,9 @@ import {
   MessageCircle,
   PawPrint,
   Coins,
-  Users
+  Users,
+  Video,
+  Search,
 } from "lucide-react"
 // Sound player
 const sounds = {}
@@ -33,6 +35,12 @@ export default function NavBar({ user, pet }) {
   const [unreadMsgCount, setUnreadMsgCount] = useState(0)
   const [cartCount, setCartCount] = useState(0)
   const [isMobile, setIsMobile] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [showSearch, setShowSearch] = useState(false)
+  const [searching, setSearching] = useState(false)
+  const searchRef = useRef(null)
+  const searchTimerRef = useRef(null)
   const notifRef = useRef(null)
   const channelRef = useRef(null)
   const initializedRef = useRef(false)
@@ -59,6 +67,7 @@ export default function NavBar({ user, pet }) {
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (notifRef.current && !notifRef.current.contains(e.target)) setShowNotifs(false)
+      if (searchRef.current && !searchRef.current.contains(e.target)) setShowSearch(false)
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
@@ -125,6 +134,38 @@ export default function NavBar({ user, pet }) {
     channelRef.current = channel
   }
 
+  const handleSearch = async (q) => {
+    setSearchQuery(q)
+    if (!q.trim()) { setSearchResults([]); setShowSearch(false); return }
+    setShowSearch(true)
+    setSearching(true)
+    clearTimeout(searchTimerRef.current)
+    searchTimerRef.current = setTimeout(async () => {
+      // Search pets by pet_name or owner_name - exact match first, then partial
+      const { data: exact } = await supabase
+        .from('pets')
+        .select('id, pet_name, owner_name, emoji, avatar_url, user_id, pet_breed')
+        .ilike('owner_name', q)
+        .limit(3)
+
+      const { data: partial } = await supabase
+        .from('pets')
+        .select('id, pet_name, owner_name, emoji, avatar_url, user_id, pet_breed')
+        .or(`pet_name.ilike.%${q}%,owner_name.ilike.%${q}%`)
+        .limit(10)
+
+      // Merge: exact first, then partial without duplicates
+      const exactIds = new Set((exact || []).map(p => p.id))
+      const merged = [
+        ...(exact || []),
+        ...(partial || []).filter(p => !exactIds.has(p.id))
+      ].slice(0, 10)
+
+      setSearchResults(merged)
+      setSearching(false)
+    }, 300)
+  }
+
   const handleBellClick = async () => {
     setShowNotifs(prev => !prev)
     if (!showNotifs && unreadCount > 0) {
@@ -150,6 +191,7 @@ export default function NavBar({ user, pet }) {
 
   const nav = [
   { href: '/feed',        icon: <Home size={26} />, label: 'Feed' },
+  { href: '/reels',       icon: <Video size={26} />, label: 'Reels' },
   { href: '/marketplace', icon: <ShoppingBag size={26} />, label: 'Market' },
   { href: '/health',      icon: <HeartPulse size={26} />, label: 'Health' },
   { href: '/chat',        icon: <MessageCircle size={26} />, label: 'Chat' },
@@ -162,10 +204,10 @@ export default function NavBar({ user, pet }) {
   // Mobile bottom nav — only 5 key items
   const mobileNav = [
     { href: '/feed',        icon: <Home size={26} />, label: 'Feed' },
-  { href: '/marketplace', icon: <ShoppingBag size={26} />, label: 'Market' },
-  { href: '/health',      icon: <HeartPulse size={26} />, label: 'Health' },
-  { href: '/chat',        icon: <MessageCircle size={26} />, label: 'Chat',  badge: pendingFriendCount },
-   { href: '/friends',     icon: <Users size={26} />, label: 'Friends', badge: pendingFriendCount },
+    { href: '/reels',       icon: <Video size={26} />, label: 'Reels' },
+    { href: '/marketplace', icon: <ShoppingBag size={26} />, label: 'Market' },
+    { href: '/chat',        icon: <MessageCircle size={26} />, label: 'Chat',  badge: pendingFriendCount },
+    { href: '/friends',     icon: <Users size={26} />, label: 'Friends', badge: pendingFriendCount },
     { href: '/profile',     icon: '🐾', label: 'Profile' },
   ]
 
@@ -197,7 +239,52 @@ export default function NavBar({ user, pet }) {
         {/* Logo */}
         <div onClick={() => router.push('/feed')} style={{ cursor: 'pointer', flexShrink: 0 }}>
           <img src="/logo.png" alt="logo"
-            style={{ height: 80, width: 'auto', padding: '4px', objectFit: 'contain' }} />
+            style={{ height: 120, width: 'auto', padding: '4px', objectFit: 'contain' }} />
+        </div>
+
+        {/* Search Bar */}
+        <div ref={searchRef} style={{ position: 'relative', flexShrink: 0, width: 220 }} className="navbar-search">
+          <div style={{ display: 'flex', alignItems: 'center', background: '#F3F0FF', borderRadius: 24, padding: '6px 14px', gap: 8, border: showSearch ? '1.5px solid #6C4BF6' : '1.5px solid transparent', transition: 'border 0.2s' }}>
+            <Search size={15} color="#6C4BF6" />
+            <input
+              value={searchQuery}
+              onChange={e => handleSearch(e.target.value)}
+              onFocus={() => searchQuery && setShowSearch(true)}
+              placeholder="Search pets & friends..."
+              style={{ background: 'none', border: 'none', outline: 'none', fontFamily: 'Nunito, sans-serif', fontSize: '0.82rem', color: '#1E1347', width: '100%' }}
+            />
+            {searchQuery && (
+              <span onClick={() => { setSearchQuery(''); setSearchResults([]); setShowSearch(false) }} style={{ cursor: 'pointer', color: '#9CA3AF', fontSize: '0.85rem', fontWeight: 700, lineHeight: 1 }}>✕</span>
+            )}
+          </div>
+          {showSearch && (
+            <div style={{ position: 'absolute', top: 44, left: 0, width: 280, background: '#fff', borderRadius: 16, boxShadow: '0 8px 32px rgba(108,75,246,0.18)', border: '1px solid #EDE8FF', zIndex: 2100, overflow: 'hidden' }}>
+              {searching ? (
+                <div style={{ padding: '14px 16px', color: '#9CA3AF', fontSize: '0.82rem', textAlign: 'center' }}>Searching... 🐾</div>
+              ) : searchResults.length === 0 ? (
+                <div style={{ padding: '14px 16px', color: '#9CA3AF', fontSize: '0.82rem', textAlign: 'center' }}>No results for "{searchQuery}"</div>
+              ) : (
+                <>
+                  <div style={{ padding: '8px 14px 4px', fontSize: '0.7rem', fontWeight: 800, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5 }}>Results</div>
+                  {searchResults.map(p => (
+                    <div key={p.id} onClick={() => { router.push(p.user_id === user?.id ? '/profile' : `/user/${p.user_id}`); setShowSearch(false); setSearchQuery('') }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', cursor: 'pointer', transition: 'background 0.15s' }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#F9F5FF'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                      <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#F0EBFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', border: '1.5px solid #EDE8FF', overflow: 'hidden', flexShrink: 0 }}>
+                        {p.avatar_url ? <img src={p.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="av" /> : p.emoji}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#1E1347', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.owner_name}</div>
+                        <div style={{ fontSize: '0.7rem', color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.pet_name} · {p.pet_breed || 'Pet'}</div>
+                      </div>
+                      {p.user_id === user?.id && <span style={{ fontSize: '0.65rem', background: '#F0EBFF', color: '#6C4BF6', padding: '2px 7px', borderRadius: 20, fontWeight: 700, flexShrink: 0 }}>You</span>}
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Desktop Nav Links — hidden on mobile */}

@@ -8,6 +8,7 @@ export default function Profile() {
   const [user, setUser] = useState(null)
   const [pet, setPet] = useState(null)
   const [posts, setPosts] = useState([])
+  const [reels, setReels] = useState([])
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({})
   const [saving, setSaving] = useState(false)
@@ -22,14 +23,19 @@ export default function Profile() {
       if (!session) { router.push('/'); return }
       setUser(session.user)
 
-      const { data: existingPet } = await supabase
-        .from('pets').select('*').eq('user_id', session.user.id).single()
+      const fetchUserContent = (fetchPetId) => {
+        supabase.from('posts').select('*').eq('pet_id', fetchPetId).order('created_at', { ascending: false }).limit(20).then(({ data }) => setPosts(data || []))
+        supabase.from('reels').select('*').eq('pet_id', fetchPetId).order('created_at', { ascending: false }).limit(20).then(({ data }) => setReels(data || []))
+      }
+
+      const { data: existingPet } = await supabase.from('pets').select('*').eq('user_id', session.user.id).single()
 
       if (existingPet) {
         setPet(existingPet)
         setForm(existingPet)
         if (existingPet.avatar_url) setAvatarPreview(existingPet.avatar_url)
         setLoading(false)
+        fetchUserContent(existingPet.id)
       } else {
         const pending = localStorage.getItem('pending_pet')
         if (pending) {
@@ -46,16 +52,11 @@ export default function Profile() {
             localStorage.removeItem('pending_pet')
             setPet(newPet)
             setForm(newPet)
+            fetchUserContent(newPet.id)
           }
         }
         setLoading(false)
       }
-
-      supabase.from('posts')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(10)
-        .then(({ data }) => setPosts(data || []))
     })
   }, [])
 
@@ -264,7 +265,7 @@ export default function Profile() {
               )}
             </div>
             <div style={{ display: 'flex', gap: 20 }}>
-              {[['Posts', posts.length], ['PawCoins', pet.paw_coins || 0]].map(([l, v]) => (
+              {[['Posts', posts.length], ['Reels', reels.length], ['PawCoins', pet.paw_coins || 0]].map(([l, v]) => (
                 <div key={l} style={{ textAlign: 'center' }}>
                   <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, color: '#ff0000ff', fontSize: '1.2rem' }}>{v}</div>
                   <div style={{ fontSize: '0.7rem', color: '#000000ff' }}>{l}</div>
@@ -302,7 +303,7 @@ export default function Profile() {
 
           {/* Tabs */}
           <div style={{ display: 'flex', borderBottom: '2px solid #EDE8FF', marginBottom: 14 }}>
-            {['posts', 'about'].map(t => (
+            {['posts', 'reels', 'about'].map(t => (
               <button key={t} onClick={() => setTab(t)}
                 style={{
                   padding: '9px 18px', border: 'none', background: 'transparent',
@@ -352,6 +353,43 @@ export default function Profile() {
                   )}
 
                   <div style={{ marginTop: 8, fontSize: '0.78rem', color: '#6B7280' }}>❤️ {p.likes || 0} paws</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Reels Tab */}
+          {tab === 'reels' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {reels.length === 0 && (
+                <div className="card" style={{ textAlign: 'center', color: '#000000ff', padding: 30 }}>
+                  No reels yet — upload your first video moment! 🎬
+                </div>
+              )}
+              {reels.map(r => (
+                <div key={r.id} className="card">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                    <div style={{
+                      width: 40, height: 40, borderRadius: '50%', background: '#FFE8F0',
+                      border: '2px solid #FF6B35', display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', fontSize: '1.2rem', overflow: 'hidden'
+                    }}>
+                      {avatarPreview
+                        ? <img src={avatarPreview} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : pet.emoji || '🐾'}
+                    </div>
+                    <div>
+                      <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 700 }}>{pet.pet_name}</div>
+                      <div style={{ fontSize: '0.72rem', color: '#6B7280' }}>{timeAgo(r.created_at)}</div>
+                    </div>
+                  </div>
+                  {r.caption && <p style={{ fontSize: '0.9rem', lineHeight: 1.65, marginBottom: 8 }}>{r.caption}</p>}
+                  
+                  <div style={{ borderRadius: 12, overflow: 'hidden', background: '#111', display: 'flex', justifyContent: 'center' }}>
+                    <video src={r.video_url} autoPlay muted loop playsInline controls style={{ width: '100%', maxHeight: 400, objectFit: 'contain' }} />
+                  </div>
+
+                  <div style={{ marginTop: 8, fontSize: '0.78rem', color: '#6B7280' }}>❤️ {r.likes || 0} paws</div>
                 </div>
               ))}
             </div>

@@ -176,7 +176,7 @@ export default function DoctorDashboard() {
                   <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageSelect} style={{ display: 'none' }} />
                 </div>
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                  <label className="label">Your Name *</label>
+                  <label className="label">User name *</label>
                   <input className="input" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Dr. Ramesh Kumar" style={{ margin: 0 }} />
                 </div>
               </div>
