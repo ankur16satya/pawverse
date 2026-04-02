@@ -1,417 +1,111 @@
 /* 
-  responsive-patch.css
-  Place this file in src/styles/ and import it in _app.js
-  This makes every page responsive without changing individual page files
+  responsive-patch.css — Clean, class-based responsive rules
+  Handles every page EXCEPT feed (which has its own CSS in globals.css)
 */
 
-/* ──────────────────────────────────────────────
-   VIEWPORT & BASE
-────────────────────────────────────────────── */
+/* ── BASE ── */
 * { box-sizing: border-box; }
-html { overflow-x: hidden; }
-body { overflow-x: hidden; }
+html, body { overflow-x: hidden; }
 img { max-width: 100%; }
+textarea, input[type="text"], input[type="email"], input[type="password"] { max-width: 100%; }
 
-/* ──────────────────────────────────────────────
-   MOBILE BOTTOM NAV
-────────────────────────────────────────────── */
+/* ── MOBILE BOTTOM NAV ── */
 .mobile-bottom-nav {
-  display: none;
-  position: fixed;
-  bottom: 0; left: 0; right: 0;
-  height: 60px;
+  display: none; position: fixed;
+  bottom: 0; left: 0; right: 0; height: 60px;
   background: rgba(255,251,247,0.97);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   border-top: 1.5px solid #EDE8FF;
   box-shadow: 0 -4px 24px rgba(108,75,246,0.1);
-  z-index: 998;
-  align-items: center;
-  justify-content: space-around;
-  padding: 0 4px;
+  z-index: 998; align-items: center; justify-content: space-around; padding: 0 4px;
 }
 .mobile-nav-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 5px 8px;
-  border: none;
-  background: none;
-  cursor: pointer;
-  border-radius: 12px;
-  transition: all 0.2s;
-  min-width: 50px;
-  position: relative;
-  color: #9CA3AF;
-  font-family: 'Nunito', sans-serif;
-  font-size: 0.58rem;
-  font-weight: 700;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 5px 8px; border: none; background: none; cursor: pointer;
+  border-radius: 12px; transition: all 0.2s; min-width: 50px; position: relative;
+  color: #9CA3AF; font-family: 'Nunito',sans-serif; font-size: 0.58rem; font-weight: 700;
 }
 .mobile-nav-btn.active { color: #FF6B35; background: rgba(255,107,53,0.08); }
 .mobile-nav-btn .nav-icon { font-size: 1.3rem; line-height: 1; }
 .mobile-nav-badge {
-  position: absolute;
-  top: 1px; right: 4px;
+  position: absolute; top: 1px; right: 4px;
   min-width: 16px; height: 16px;
-  background: linear-gradient(135deg, #FF6B9D, #FF4757);
-  border-radius: 50%;
-  border: 2px solid #FFFBF7;
+  background: linear-gradient(135deg,#FF6B9D,#FF4757);
+  border-radius: 50%; border: 2px solid #FFFBF7;
   display: flex; align-items: center; justify-content: center;
   font-size: 0.5rem; font-weight: 800; color: #fff;
 }
 
-/* ──────────────────────────────────────────────
-   BREAKPOINT: TABLET (max 1024px)
-────────────────────────────────────────────── */
-@media (max-width: 1024px) {
-  /* Feed 3-col → shrink sidebars */
-  div[style*="250px 1fr 250px"] {
-    grid-template-columns: 200px 1fr 200px !important;
-    padding: 10px !important;
-    gap: 10px !important;
-  }
-
-  /* Marketplace 2-col → shrink sidebar */
-  div[style*="220px 1fr"] {
-    grid-template-columns: 180px 1fr !important;
-    padding: 10px !important;
-  }
-
-  /* Chat sidebar shrink */
-  div[style*="width: 300px"], div[style*="width:300px"] {
-    width: 240px !important;
-  }
+/* ── CHAT BACK BUTTON ── */
+.chat-back-btn {
+  display: none; align-items: center; gap: 8px; padding: 8px 14px;
+  background: none; border: none; cursor: pointer; color: #6C4BF6;
+  font-weight: 700; font-family: 'Nunito',sans-serif; font-size: 0.88rem;
 }
 
-/* ──────────────────────────────────────────────
-   BREAKPOINT: MOBILE (max 768px)
-────────────────────────────────────────────── */
-@media (max-width: 768px) {
-
-  /* Show mobile bottom nav */
-  .mobile-bottom-nav { display: flex !important; }
-
-  /* Padding for bottom nav */
-  body { padding-bottom: 68px !important; }
-
-  /* ── NAVBAR ── */
-  /* Hide desktop nav links */
-  .navbar-desktop-links { display: none !important; }
-  /* Hide logout on mobile */
-  .navbar-logout { display: none !important; }
-
-  /* Shrink navbar height */
-  nav[data-pawverse-nav] {
-    height: 64px !important;
-    padding: 0 10px !important;
-  }
-  nav[data-pawverse-nav] img {
-    height: 52px !important;
-  }
-
-  /* ── FEED - 3 column → single column ── */
-  div[style*="250px 1fr 250px"] {
-    grid-template-columns: 1fr !important;
-    display: flex !important;
-    flex-direction: column !important;
-    margin-top: 68px !important;
-    padding: 8px !important;
-    gap: 10px !important;
-  }
-  /* Hide left sidebar on Feed to save space */
-  div[style*="250px 1fr 250px"] > div:first-child {
-    display: none !important;
-  }
-  /* Hide right sidebar */
-  div[style*="250px 1fr 250px"] > div:last-child {
-    display: none !important;
-  }
-
-  /* ── MARKETPLACE, HEALTH, ETC - 2 col → single col ── */
-  div[style*="220px 1fr"] {
-    grid-template-columns: 1fr !important;
-    display: flex !important;
-    flex-direction: column !important;
-    margin-top: 68px !important;
-    padding: 8px !important;
-    gap: 8px !important;
-  }
-  
-  /* Reset sticky sidebars on mobile so they stack and scroll naturally! */
-  div[style*="position: sticky"], div[style*="position:sticky"] {
-    position: static !important;
-    top: auto !important;
-    max-height: none !important;
-    margin-bottom: 10px !important;
-  }
-
-  /* ── CHAT ── */
-  div[style*="1000px"][style*="display: flex"] {
-    flex-direction: column !important;
-    height: auto !important;
-    margin-top: 68px !important;
-    min-height: calc(100vh - 68px - 60px) !important;
-  }
-  /* Chat sidebar full width */
-  div[style*="width: 300px"], div[style*="width:300px"] {
-    width: 100% !important;
-    max-height: 42vh !important;
-    overflow-y: auto !important;
-    border-right: none !important;
-    border-bottom: 2px solid #000 !important;
-  }
-
-  /* ── PROFILE ── */
-  div[style*="max-width: 860px"], div[style*="max-width:860px"] {
-    margin-top: 68px !important;
-  }
-  /* Profile cover height */
-  div[style*="height: 240px"], div[style*="height:240px"] {
-    height: 160px !important;
-  }
-
-  /* ── LISTING DETAIL ── */
-  div[style*="1fr 1fr"] {
-    grid-template-columns: 1fr !important;
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 14px !important;
-  }
-  div[style*="max-width: 900px"] {
-    margin-top: 68px !important;
-    padding: 12px !important;
-  }
-
-  /* ── CART ── */
-  div[style*="1fr 320px"] {
-    grid-template-columns: 1fr !important;
-    display: flex !important;
-    flex-direction: column !important;
-  }
-
-  /* ── GENERAL pages max-widths ── */
-  div[style*="max-width: 860px"], div[style*="max-width: 1000px"], div[style*="max-width: 1100px"] {
-    margin-top: 68px !important;
-    padding: 10px !important;
-  }
-
-  /* ── MODALS ── */
-  /* Location modal, create listing modal — slide up from bottom */
-  div[style*="border-radius: 20px"][style*="max-width: 420px"],
-  div[style*="border-radius: 20px"][style*="max-width: 500px"],
-  div[style*="border-radius: 20px"][style*="max-width: 520px"],
-  div[style*="border-radius: 20px"][style*="max-width: 480px"],
-  div[style*="border-radius:20px"][style*="max-width:420px"],
-  div[style*="border-radius:20px"][style*="max-width:520px"] {
-    margin: auto 0 0 0 !important;
-    border-radius: 20px 20px 0 0 !important;
-    max-width: 100% !important;
-    width: 100% !important;
-    max-height: 92vh !important;
-  }
-
-  /* ── NOTIFICATION DROPDOWN ── */
-  div[style*="width: 320px"][style*="position: absolute"],
-  div[style*="width: 310px"][style*="position: absolute"] {
-    width: calc(100vw - 20px) !important;
-    right: -20px !important;
-  }
-
-  /* ── PAY PAGE ── */
-  div[style*="max-width: 600px"], div[style*="max-width:600px"] {
-    margin-top: 68px !important;
-    padding: 10px !important;
-    max-width: 100% !important;
-  }
-
-  /* ── SUPERADMIN / COINS / HEALTH / ADOPT ── */
-  div[style*="max-width: 1100px"], div[style*="max-width: 800px"], div[style*="max-width: 860px"] {
-    margin-top: 68px !important;
-    padding: 10px !important;
-  }
-
-  /* ── Cards ── */
-  .card { padding: 12px !important; border-radius: 16px !important; }
-
-  /* ── Typography ── */
-  h1[style*="fontSize: '1.8rem'"],
-  h1[style*="fontSize: '2rem'"],
-  h1[style*="fontSize: '1.6rem'"] {
-    font-size: 1.4rem !important;
-  }
-
-  /* ── Buttons ── */
-  .btn-primary { padding: 9px 16px !important; font-size: 0.85rem !important; }
-  .btn-secondary { padding: 9px 16px !important; font-size: 0.85rem !important; }
-}
-
-/* ──────────────────────────────────────────────
-   BREAKPOINT: SMALL MOBILE (max 480px)
-────────────────────────────────────────────── */
-@media (max-width: 480px) {
-  /* Hide extra composer buttons on tiny screens */
-  .composer-extra { display: none !important; }
-
-  /* Friends grid 2 cols */
-  div[style*="repeat(auto-fill, minmax(240px, 1fr))"] {
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 10px !important;
-  }
-
-  /* Products 2 cols on small */
-  div[style*="repeat(auto-fill, minmax(190px, 1fr))"] {
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 8px !important;
-  }
-
-  /* About grid single col */
-  div[style*="1fr 1fr"] {
-    grid-template-columns: 1fr !important;
-  }
-
-  /* Cart item */
-  div[style*="display: flex"][style*="align-items: center"][style*="gap: 14px"] {
-    flex-wrap: wrap !important;
-    gap: 10px !important;
-  }
-
-  /* Hide PawCoins in navbar on tiny screens */
-  .navbar-coins { display: none !important; }
-
-  /* Listing detail image */
-  div[style*="height: 320"][style*="borderRadius: 16"] {
-    height: 220px !important;
-  }
-
-  /* Toast position */
-  div[style*="position: fixed"][style*="bottom: 22px"], div[style*="position:fixed"][style*="bottom:22px"] {
-    left: 10px !important;
-    right: 10px !important;
-    bottom: 72px !important;
-    text-align: center !important;
-  }
-
-  /* Profile cover even smaller */
-  div[style*="height: 240px"], div[style*="height:240px"] {
-    height: 130px !important;
-  }
-}
-
-/* ──────────────────────────────────────────────
-   MOBILE CATEGORY STRIP (Marketplace)
-────────────────────────────────────────────── */
+/* ── MOBILE CAT STRIP (Marketplace) ── */
 .mobile-cat-strip {
-  display: none;
-  overflow-x: auto;
-  gap: 6px;
-  padding: 8px 10px;
-  scrollbar-width: none;
-  background: rgba(255,251,247,0.97);
-  border-bottom: 1px solid #EDE8FF;
-  position: sticky;
-  top: 64px;
-  z-index: 10;
+  display: none; overflow-x: auto; gap: 6px; padding: 8px 10px;
+  scrollbar-width: none; background: rgba(255,251,247,0.97);
+  border-bottom: 1px solid #EDE8FF; position: sticky; top: 64px; z-index: 10;
   -webkit-overflow-scrolling: touch;
 }
 .mobile-cat-strip::-webkit-scrollbar { display: none; }
 .mobile-cat-pill {
-  flex-shrink: 0;
-  padding: 6px 14px;
-  border-radius: 50px;
-  font-size: 0.78rem;
-  font-weight: 700;
-  border: none;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.15s;
-  background: #F3F0FF;
-  color: #6C4BF6;
-  font-family: 'Nunito', sans-serif;
+  flex-shrink: 0; padding: 6px 14px; border-radius: 50px;
+  font-size: 0.78rem; font-weight: 700; border: none; cursor: pointer;
+  white-space: nowrap; transition: all 0.15s;
+  background: #F3F0FF; color: #6C4BF6; font-family: 'Nunito',sans-serif;
 }
-.mobile-cat-pill.active {
-  background: linear-gradient(135deg, #FF6B35, #6C4BF6);
-  color: #fff;
-}
-@media (max-width: 768px) {
-  .mobile-cat-strip { display: flex !important; }
-}
+.mobile-cat-pill.active { background: linear-gradient(135deg,#FF6B35,#6C4BF6); color: #fff; }
 
-/* ──────────────────────────────────────────────
-   PRODUCT CARD GRID RESPONSIVE
-────────────────────────────────────────────── */
+/* ── PRODUCT GRID ── */
 .product-cards-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: 14px;
 }
-@media (max-width: 768px) {
-  .product-cards-grid {
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 10px !important;
-  }
-}
-@media (max-width: 360px) {
-  .product-cards-grid {
-    grid-template-columns: 1fr !important;
-  }
+
+/* ── TABLET 1024px ── */
+@media (max-width: 1024px) {
+  .navbar-search { width: 180px !important; }
 }
 
-/* ──────────────────────────────────────────────
-   CHAT: Back button (show on mobile when chat open)
-────────────────────────────────────────────── */
-.chat-back-btn {
-  display: none;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #6C4BF6;
-  font-weight: 700;
-  font-family: 'Nunito', sans-serif;
-  font-size: 0.88rem;
-}
+/* ── MOBILE 768px ── */
 @media (max-width: 768px) {
+  /* Show bottom nav, add padding */
+  .mobile-bottom-nav { display: flex !important; }
+  body { padding-bottom: 68px !important; }
+
+  /* Navbar */
+  .navbar-desktop-links { display: none !important; }
+  .navbar-logout { display: none !important; }
+  nav[data-pawverse-nav] { height: 64px !important; padding: 0 10px !important; }
+  nav[data-pawverse-nav] img { height: 52px !important; }
+  .navbar-search { width: 160px !important; max-width: 160px !important; }
+
+  /* Chat back button */
   .chat-back-btn { display: flex !important; }
+
+  /* Mobile category strip */
+  .mobile-cat-strip { display: flex !important; }
+
+  /* Product grid */
+  .product-cards-grid { grid-template-columns: repeat(2,1fr) !important; gap: 10px !important; }
+
+  /* Cards */
+  .card { border-radius: 16px !important; }
+
+  /* Buttons */
+  .btn-primary, .btn-secondary { padding: 9px 16px !important; font-size: 0.85rem !important; }
 }
 
-/* ──────────────────────────────────────────────
-   SMOOTH TRANSITIONS
-────────────────────────────────────────────── */
-.card,
-.btn-primary,
-.btn-secondary,
-button {
-  transition: all 0.2s ease;
+/* ── SMALL MOBILE 480px ── */
+@media (max-width: 480px) {
+  .navbar-coins { display: none !important; }
+  .product-cards-grid { grid-template-columns: repeat(2,1fr) !important; gap: 8px !important; }
 }
 
-/* ──────────────────────────────────────────────
-   PREVENT HORIZONTAL OVERFLOW
-────────────────────────────────────────────── */
-@media (max-width: 768px) {
-  .card { max-width: 100%; overflow-x: hidden; }
-  textarea, input[type="text"], input[type="email"], input[type="password"] {
-    max-width: 100%;
-    font-size: 16px; /* Prevents zoom on iOS */
-  }
-}
-
-/* ──────────────────────────────────────────────
-   FRIENDS PAGE TABS SCROLL
-────────────────────────────────────────────── */
-@media (max-width: 768px) {
-  div[style*="display: flex"][style*="border-bottom"][style*="margin-bottom: 20px"] {
-    overflow-x: auto !important;
-    scrollbar-width: none !important;
-    -webkit-overflow-scrolling: touch !important;
-  }
-}
-
-/* ──────────────────────────────────────────────
-   LOADING SPINNER
-────────────────────────────────────────────── */
-div[style*="display: flex"][style*="align-items: center"][style*="justify-content: center"][style*="height: 100vh"] {
-  padding-top: 0 !important;
+@media (max-width: 360px) {
+  .product-cards-grid { grid-template-columns: 1fr !important; }
 }

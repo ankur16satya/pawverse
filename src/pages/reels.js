@@ -281,15 +281,16 @@ export default function Reels() {
           ref={containerRef}
           onScroll={handleScroll}
           style={{
-            height: '100vh', overflowY: 'scroll',
+            height: 'calc(100vh - 70px)', 
+            marginTop: 70, // Start below navbar exactly
+            overflowY: 'scroll',
             scrollSnapType: 'y mandatory',
             scrollBehavior: 'smooth',
-            paddingTop: 98,
             boxSizing: 'border-box',
           }}>
           {reels.map((reel, idx) => (
             <div key={reel.id} style={{
-              height: 'calc(100vh - 98px)',
+              height: '100%',
               scrollSnapAlign: 'start',
               position: 'relative',
               background: '#111',
