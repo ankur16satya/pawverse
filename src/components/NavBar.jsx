@@ -39,9 +39,11 @@ export default function NavBar({ user, pet }) {
   const [searchResults, setSearchResults] = useState([])
   const [showSearch, setShowSearch] = useState(false)
   const [searching, setSearching] = useState(false)
+  const [showMoreMenu, setShowMoreMenu] = useState(false)
   const searchRef = useRef(null)
   const searchTimerRef = useRef(null)
   const notifRef = useRef(null)
+  const moreMenuRef = useRef(null)
   const channelRef = useRef(null)
   const initializedRef = useRef(false)
 
@@ -68,6 +70,7 @@ export default function NavBar({ user, pet }) {
     const handleClickOutside = (e) => {
       if (notifRef.current && !notifRef.current.contains(e.target)) setShowNotifs(false)
       if (searchRef.current && !searchRef.current.contains(e.target)) setShowSearch(false)
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target)) setShowMoreMenu(false)
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
@@ -195,22 +198,31 @@ export default function NavBar({ user, pet }) {
   { href: '/feed',        icon: <Home size={26} />, label: 'Feed' },
   { href: '/reels',       icon: <Video size={26} />, label: 'Reels' },
   { href: '/marketplace', icon: <ShoppingBag size={26} />, label: 'Market' },
-  { href: '/health',      icon: <HeartPulse size={26} />, label: 'Health' },
   { href: '/chat',        icon: <MessageCircle size={26} />, label: 'Chat', badge: unreadMsgCount },
+  { href: '/friends',     icon: <Users size={26} />, label: 'Friends', badge: pendingFriendCount },
+  { href: '/health',      icon: <HeartPulse size={26} />, label: 'Health' },
   { href: '/adopt',       icon: <PawPrint size={26} />, label: 'Adopt' },
   { href: '/coins',       icon: <Coins size={26} />, label: 'Coins' },
-  { href: '/friends',     icon: <Users size={26} />, label: 'Friends', badge: pendingFriendCount },
   { href: '/cart',        icon: <ShoppingCart size={26} />, label: 'Cart' },
+  { href: '/profile',     icon: pet?.avatar_url ? <img src={pet.avatar_url} alt="av" style={{ width: 26, height: 26, borderRadius: '50%', objectFit: 'cover', border: '2px solid #FF6B35' }} /> : <span style={{ fontSize: '1.4rem' }}>{pet?.emoji || '🐾'}</span>, label: 'Profile' },
 ]
 
-  // Mobile bottom nav — only 5 key items
+  // Mobile bottom nav — 5 key items + More
   const mobileNav = [
     { href: '/feed',        icon: <Home size={26} />, label: 'Feed' },
     { href: '/reels',       icon: <Video size={26} />, label: 'Reels' },
     { href: '/marketplace', icon: <ShoppingBag size={26} />, label: 'Market' },
+     { href: '/chat',        icon: <MessageCircle size={26} />, label: 'Chat',  badge: unreadMsgCount },
     { href: '/health',      icon: <HeartPulse size={26} />, label: 'Health' },
-    { href: '/chat',        icon: <MessageCircle size={26} />, label: 'Chat',  badge: unreadMsgCount },
-    { href: '/profile',     icon: '🐾', label: 'Profile' },
+  ]
+
+  // Extra items shown in More drawer
+  const moreItems = [
+    { href: '/profile',   icon: pet?.avatar_url ? <img src={pet.avatar_url} alt="av" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', border: '2px solid #FF6B35' }} /> : <span style={{ fontSize: '1.5rem' }}>{pet?.emoji || '🐾'}</span>, label: 'My Profile', desc: pet?.pet_name || 'View your profile' },
+    { href: '/friends',   icon: <Users size={24} />,       label: 'Friends',    desc: 'Manage connections', badge: pendingFriendCount },
+    { href: '/adopt',     icon: <PawPrint size={24} />,    label: 'Adopt',      desc: 'Find pets to adopt' },
+    { href: '/coins',     icon: <Coins size={24} />,       label: 'PawCoins',   desc: `${pet?.paw_coins ?? 0} coins earned` },
+    { href: '/cart',      icon: <ShoppingCart size={24} />,label: 'Cart',       desc: 'Your shopping cart', badge: cartCount },
   ]
 
   const BadgeDot = ({ count, color = '#FF4757' }) => count > 0 ? (
@@ -404,8 +416,8 @@ export default function NavBar({ user, pet }) {
       <nav className="mobile-bottom-nav">
         {mobileNav.map(n => (
           <button key={n.href}
-            className={`mobile-nav-btn ${path === n.href || (n.href === '/profile' && path === '/profile') ? 'active' : ''}`}
-            onClick={() => router.push(n.href)}>
+            className={`mobile-nav-btn ${path === n.href ? 'active' : ''}`}
+            onClick={() => { setShowMoreMenu(false); router.push(n.href) }}>
             <div style={{ position: 'relative', display: 'inline-block' }}>
               <span className="nav-icon">{n.icon}</span>
               {n.badge > 0 && (
@@ -416,9 +428,103 @@ export default function NavBar({ user, pet }) {
           </button>
         ))}
 
+        {/* More button */}
+        <div ref={moreMenuRef} style={{ position: 'relative' }}>
+          <button
+            className={`mobile-nav-btn ${showMoreMenu ? 'active' : ''}`}
+            onClick={() => setShowMoreMenu(p => !p)}>
+            <div style={{ position: 'relative', display: 'inline-block' }}>
+              <span className="nav-icon">
+                {showMoreMenu
+                  ? <span style={{ fontSize: '1.4rem' }}>✕</span>
+                  : (pet?.avatar_url
+                      ? <img src={pet.avatar_url} alt="av" style={{ width: 26, height: 26, borderRadius: '50%', objectFit: 'cover', border: `2px solid ${path === '/profile' ? '#FF6B35' : '#EDE8FF'}` }} />
+                      : <span style={{ fontSize: '1.4rem' }}>{pet?.emoji || '🐾'}</span>
+                    )
+                }
+              </span>
+              {(pendingFriendCount + cartCount) > 0 && !showMoreMenu && (
+                <span className="mobile-nav-badge">{Math.min(pendingFriendCount + cartCount, 9)}+</span>
+              )}
+            </div>
+            <span>More</span>
+          </button>
 
+          {/* More Drawer — slides up from bottom */}
+          {showMoreMenu && (
+            <>
+              {/* Backdrop */}
+              <div
+                onClick={() => setShowMoreMenu(false)}
+                style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 996, backdropFilter: 'blur(2px)' }}
+              />
+              {/* Drawer */}
+              <div style={{
+                position: 'fixed', bottom: 60, left: 0, right: 0,
+                background: '#fff', borderRadius: '20px 20px 0 0',
+                boxShadow: '0 -8px 32px rgba(0,0,0,0.15)',
+                zIndex: 997, padding: '16px 16px 8px',
+                animation: 'slideUp 0.22s cubic-bezier(0.34,1.56,0.64,1)',
+              }}>
+                {/* Handle */}
+                <div style={{ width: 36, height: 4, borderRadius: 2, background: '#EDE8FF', margin: '0 auto 14px' }} />
+
+                {/* Pet mini header */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'linear-gradient(135deg,#F9F5FF,#FFF0E8)', borderRadius: 14, marginBottom: 12 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#FFE8F0', border: '3px solid #FF6B35', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', overflow: 'hidden', flexShrink: 0 }}>
+                    {pet?.avatar_url ? <img src={pet.avatar_url} alt="av" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : pet?.emoji || '🐾'}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.95rem', color: '#1E1347' }}>{pet?.pet_name || 'My Pet'}</div>
+                    <div style={{ fontSize: '0.72rem', color: '#6B7280' }}>🪙 {pet?.paw_coins ?? 0} PawCoins</div>
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#6C4BF6', fontWeight: 700 }}>Tap to view →</div>
+                </div>
+
+                {/* Menu Items Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+                  {moreItems.map(item => (
+                    <button key={item.href}
+                      onClick={() => { setShowMoreMenu(false); router.push(item.href) }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '12px', border: path === item.href ? '2px solid #FF6B35' : '2px solid #EDE8FF',
+                        borderRadius: 14, background: path === item.href ? '#FFF0E8' : '#FAFAFA',
+                        cursor: 'pointer', textAlign: 'left', position: 'relative', transition: 'all 0.15s'
+                      }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 10, background: path === item.href ? '#FFE8CC' : '#F3F0FF', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6C4BF6', flexShrink: 0 }}>
+                        {item.icon}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontFamily: 'Nunito, sans-serif', fontWeight: 800, fontSize: '0.82rem', color: path === item.href ? '#FF6B35' : '#1E1347' }}>{item.label}</div>
+                        <div style={{ fontSize: '0.66rem', color: '#9CA3AF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.desc}</div>
+                      </div>
+                      {item.badge > 0 && (
+                        <span style={{ position: 'absolute', top: 8, right: 8, background: '#FF4757', color: '#fff', borderRadius: 20, padding: '1px 6px', fontSize: '0.6rem', fontWeight: 800 }}>{item.badge}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Logout row */}
+                <button
+                  onClick={async () => { setShowMoreMenu(false); await supabase.auth.signOut(); router.push('/') }}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', border: 'none', borderRadius: 12, background: '#FFF0F0', cursor: 'pointer', marginBottom: 4 }}>
+                  <span style={{ fontSize: '1.2rem' }}>🚪</span>
+                  <span style={{ fontFamily: 'Nunito, sans-serif', fontWeight: 800, fontSize: '0.88rem', color: '#FF4757' }}>Logout</span>
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </nav>
 
+      <style>{`
+        @keyframes slideUp {
+          from { transform: translateY(100%); opacity: 0; }
+          to   { transform: translateY(0);    opacity: 1; }
+        }
+      `}</style>
 
     </>
   )

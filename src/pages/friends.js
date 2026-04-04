@@ -460,13 +460,19 @@ export default function Friends() {
                 {friends.map(friend => (
                   <div key={friend.id} className="card"
                     style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 18, textAlign: 'center' }}>
-                    <Avatar pet={friend} size={64} borderColor='#22C55E' />
-                    <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.95rem', marginTop: 8 }}>
-                      {friend.pet_name}
-                    </div>
-                    <div style={{ color: '#6B7280', fontSize: '0.75rem' }}>{friend.pet_breed}</div>
-                    <div style={{ color: '#6B7280', fontSize: '0.72rem', marginBottom: 12 }}>
-                      by {friend.owner_name}
+                    <div
+                      onClick={() => router.push(`/user/${friend.user_id}`)}
+                      style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}
+                    >
+                      <Avatar pet={friend} size={64} borderColor='#22C55E' />
+                      <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.95rem', marginTop: 8, color: '#1E1347' }}>
+                        {friend.pet_name}
+                      </div>
+                      <div style={{ color: '#6B7280', fontSize: '0.75rem' }}>{friend.pet_breed}</div>
+                      <div style={{ color: '#6B7280', fontSize: '0.72rem', marginBottom: 4 }}>
+                        by {friend.owner_name}
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: '#6C4BF6', fontWeight: 700, marginBottom: 10 }}>View Profile →</div>
                     </div>
                     <div style={{ display: 'flex', gap: 6, width: '100%' }}>
                       <button onClick={() => router.push('/chat')}

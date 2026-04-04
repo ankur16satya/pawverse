@@ -267,6 +267,8 @@ body {
     margin-top: 62px !important;
     padding: 8px !important;
   }
+  .marketplace-sidebar { display: none !important; }
+  .marketplace-banner-wrap { margin-top: 64px !important; padding: 0 8px !important; }
   .marketplace-categories-mobile {
     display: flex !important;
     overflow-x: auto;
@@ -1028,4 +1030,51 @@ textarea { max-width: 100%; }
   .feed-action-btn { font-size: 0.72rem; }
   .feed-comment-input-row { gap: 6px; }
   .feed-share-grid { grid-template-columns: repeat(4,1fr); gap: 6px; }
+}
+/* ─────────────────────────────────────────────
+   SLIDE UP ANIMATION (More menu drawer)
+───────────────────────────────────────────── */
+@keyframes slideUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* ─────────────────────────────────────────────
+   MARKETPLACE MOBILE FAB
+───────────────────────────────────────────── */
+.marketplace-fab {
+  display: none;
+}
+@media (max-width: 768px) {
+  .marketplace-fab {
+    display: flex;
+    position: fixed;
+    bottom: 76px;
+    right: 16px;
+    z-index: 200;
+    align-items: center;
+    gap: 8px;
+    background: linear-gradient(135deg, #FF6B35, #6C4BF6);
+    color: #fff;
+    border: none;
+    border-radius: 28px;
+    padding: 12px 18px;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 800;
+    font-size: 0.88rem;
+    box-shadow: 0 6px 20px rgba(108,75,246,0.35);
+    cursor: pointer;
+    animation: fabPop 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  }
+}
+@keyframes fabPop {
+  from { transform: scale(0.6); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+
+/* ─────────────────────────────────────────────
+   PROFILE PAGE RESPONSIVE
+───────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .profile-wrapper { margin-top: 62px !important; }
 }

@@ -157,7 +157,7 @@ export default function Profile() {
   }
 
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontSize: '2rem' }}>🐾</div>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontSize: '2rem',paddingTop:'50px' }}>🐾</div>
   )
 
   if (!pet) return (
@@ -172,129 +172,180 @@ export default function Profile() {
   )
 
   return (
-     <div style={{ background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))',padding:'40px', minHeight: '100vh',}}>
+    <div style={{ background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))', minHeight: '100vh' }}>
       <NavBar user={user} pet={pet} />
-      <div style={{ maxWidth: 860, margin: '58px auto 0', paddingBottom: 40 }}>
+
+      <style>{`
+        .profile-wrapper {
+          max-width: 860px;
+          margin: 68px auto 0;
+          padding-bottom: 60px;
+          padding-top:30px
+        }
+        .profile-cover {
+          height: 220px;
+          background: linear-gradient(135deg, #FF6B35, #6C4BF6 60%, #FF6B9D);
+          border-radius: 0 0 20px 20px;
+          position: relative;
+        }
+        .profile-body {
+          padding: 52px 24px 0;
+        }
+        .profile-info-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+          flex-wrap: wrap;
+          gap: 12px;
+          margin-bottom: 16px;
+        }
+        .profile-stats {
+          display: flex;
+          gap: 20px;
+        }
+        .profile-tabs {
+          display: flex;
+          border-bottom: 2px solid #EDE8FF;
+          margin-bottom: 14px;
+          overflow-x: auto;
+          scrollbar-width: none;
+        }
+        .profile-tabs::-webkit-scrollbar { display: none; }
+        .profile-posts-grid {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .profile-about-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+        }
+        .profile-friends-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+          gap: 12px;
+        }
+        @media (max-width: 768px) {
+          .profile-wrapper {
+            margin-top: 30px !important;
+            padding-bottom: 80px;
+          }
+          .profile-cover {
+            height: 160px;
+            border-radius: 0 0 16px 16px;
+          }
+          .profile-body {
+            padding: 44px 14px 0;
+          }
+          .profile-info-row {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+          }
+          .profile-stats {
+            gap: 14px;
+            width: 100%;
+            justify-content: flex-start;
+          }
+          .profile-about-grid {
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+          }
+          .profile-friends-grid {
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 10px;
+          }
+        }
+        @media (max-width: 480px) {
+          .profile-cover { height: 130px; }
+          .profile-body { padding: 40px 12px 0; }
+          .profile-about-grid { grid-template-columns: 1fr; }
+          .profile-friends-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+      `}</style>
+
+      <div className="profile-wrapper">
 
         {/* Cover + Avatar */}
-        <div style={{ height: 240, background: 'linear-gradient(135deg, #FF6B35, #6C4BF6 60%, #FF6B9D)', borderRadius: '0 0 20px 20px', position: 'relative' }}>
+        <div className="profile-cover">
 
           {/* Avatar with upload button */}
-          <div style={{ position: 'absolute', bottom: -40, left: 24 }}>
-            <div style={{ position: 'relative', width: 100, height: 100 }}>
-
-              {/* Avatar circle */}
+          <div style={{ position: 'absolute', bottom: -38, left: 20 }}>
+            <div style={{ position: 'relative', width: 90, height: 90 }}>
               <div style={{
-                width: 100, height: 100, borderRadius: '50%',
+                width: 90, height: 90, borderRadius: '50%',
                 border: '4px solid #fff', background: '#FFE8F0',
                 boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '3.2rem', overflow: 'hidden', position: 'relative'
+                fontSize: '2.8rem', overflow: 'hidden', position: 'relative'
               }}>
                 {avatarUploading ? (
-                  <div style={{
-                    position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    borderRadius: '50%', flexDirection: 'column', gap: 4
-                  }}>
-                    <div style={{ fontSize: '1.4rem' }}>⏳</div>
-                    <div style={{ fontSize: '0.6rem', color: '#fff', fontWeight: 800 }}>Uploading...</div>
+                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ fontSize: '1.2rem' }}>⏳</div>
+                    <div style={{ fontSize: '0.55rem', color: '#fff', fontWeight: 800 }}>Uploading...</div>
                   </div>
                 ) : avatarPreview ? (
-                  <img
-                    src={avatarPreview}
-                    alt="avatar"
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
+                  <img src={avatarPreview} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
                   pet.emoji || '🐾'
                 )}
               </div>
-
               {/* Camera button */}
               <div
                 onClick={() => !avatarUploading && avatarInputRef.current?.click()}
                 style={{
                   position: 'absolute', bottom: 2, right: 2,
-                  width: 30, height: 30, borderRadius: '50%',
+                  width: 28, height: 28, borderRadius: '50%',
                   background: avatarUploading ? '#ccc' : 'linear-gradient(135deg, #FF6B35, #6C4BF6)',
-                  border: '2.5px solid #fff',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: avatarUploading ? 'not-allowed' : 'pointer',
-                  fontSize: '0.8rem',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                  transition: 'transform 0.2s'
+                  border: '2.5px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: avatarUploading ? 'not-allowed' : 'pointer', fontSize: '0.75rem',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)', transition: 'transform 0.2s'
                 }}
-                title="Change profile photo"
                 onMouseEnter={e => { if (!avatarUploading) e.currentTarget.style.transform = 'scale(1.1)' }}
                 onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-              >
-                📷
-              </div>
-
-              {/* Hidden file input */}
-              <input
-                ref={avatarInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleAvatarChange}
-                style={{ display: 'none' }}
-              />
+              >📷</div>
+              <input ref={avatarInputRef} type="file" accept="image/*" onChange={handleAvatarChange} style={{ display: 'none' }} />
             </div>
           </div>
 
-          {/* Edit Profile & Logout buttons */}
+          {/* Edit Profile button */}
           {!editing && (
-            <div style={{ position: 'absolute', top: 14, right: 14, display: 'flex', gap: 8 }}>
+            <div style={{ position: 'absolute', top: 12, right: 12 }}>
               <button
                 onClick={() => setEditing(true)}
                 style={{
                   background: 'rgba(255,255,255,0.22)', color: '#fff',
                   backdropFilter: 'blur(8px)',
                   border: '1.5px solid rgba(255,255,255,0.35)',
-                  borderRadius: 11, padding: '8px 16px',
+                  borderRadius: 11, padding: '7px 14px',
                   fontFamily: 'Nunito, sans-serif', fontWeight: 800,
-                  cursor: 'pointer', fontSize: '0.88rem'
+                  cursor: 'pointer', fontSize: '0.82rem'
                 }}>
                 ✏️ Edit Profile
-              </button>
-              <button
-                onClick={async () => { await supabase.auth.signOut(); router.push('/') }}
-                style={{
-                  background: '#FF4757', color: '#fff',
-                  border: 'none',
-                  borderRadius: 11, padding: '8px 16px',
-                  fontFamily: 'Nunito, sans-serif', fontWeight: 800,
-                  cursor: 'pointer', fontSize: '0.88rem'
-                }}>
-                🚪 Logout
               </button>
             </div>
           )}
         </div>
 
-        <div style={{ padding: '52px 24px 0' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+        <div className="profile-body">
+          <div className="profile-info-row">
             <div>
-              <h1 style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.65rem' }}>
+              <h1 style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: 'clamp(1.2rem, 4vw, 1.65rem)', margin: 0 }}>
                 {pet.pet_name} {pet.emoji || '🐾'}
               </h1>
               <p style={{ color: '#000000ff', fontSize: '0.86rem', marginTop: 2 }}>
                 {pet.pet_breed} · Managed by {pet.owner_name}
               </p>
               {!editing && (
-                <div style={{ marginTop: 8 }}>
+                <div style={{ marginTop: 6 }}>
                   {[['📍', pet.location || 'India'], ['🪙', `${pet.paw_coins || 0} PawCoins`]].map(([ic, tx]) => (
-                    <span key={tx} style={{
-                      display: 'inline-block', padding: '3px 9px', borderRadius: 20,
-                      fontSize: '0.72rem', fontWeight: 800, margin: 2,
-                      background: '#F3F0FF', color: '#6C4BF6'
-                    }}>{ic} {tx}</span>
+                    <span key={tx} style={{ display: 'inline-block', padding: '3px 9px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 800, margin: 2, background: '#F3F0FF', color: '#6C4BF6' }}>{ic} {tx}</span>
                   ))}
                 </div>
               )}
             </div>
-            <div style={{ display: 'flex', gap: 20 }}>
+            <div className="profile-stats">
               {[['Posts', posts.length], ['Reels', reels.length], ['PawCoins', pet.paw_coins || 0]].map(([l, v]) => (
                 <div key={l} style={{ textAlign: 'center' }}>
                   <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, color: '#ff0000ff', fontSize: '1.2rem' }}>{v}</div>
@@ -332,24 +383,24 @@ export default function Profile() {
           )}
 
           {/* Tabs */}
-          <div style={{ display: 'flex', borderBottom: '2px solid #EDE8FF', marginBottom: 14 }}>
-            {['posts', 'reels', 'about'].map(t => (
+          <div className="profile-tabs">
+            {[['posts','📸 Posts'],['reels','🎬 Reels'],['friends','🐾 Friends'],['about','📋 About']].map(([t, lb]) => (
               <button key={t} onClick={() => setTab(t)}
                 style={{
-                  padding: '9px 18px', border: 'none', background: 'transparent',
+                  padding: '9px 16px', border: 'none', background: 'transparent',
                   cursor: 'pointer', fontFamily: 'Nunito, sans-serif', fontWeight: 700,
-                  fontSize: '0.86rem', color: tab === t ? '#ffffffff' : '#000000ff',
+                  fontSize: '0.84rem', color: tab === t ? '#FF6B35' : '#6B7280',
                   borderBottom: tab === t ? '3px solid #FF6B35' : '3px solid transparent',
-                  marginBottom: -2
+                  marginBottom: -2, whiteSpace: 'nowrap', flexShrink: 0
                 }}>
-                {t.charAt(0).toUpperCase() + t.slice(1)}
+                {lb}
               </button>
             ))}
           </div>
 
           {/* Posts Tab */}
           {tab === 'posts' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="profile-posts-grid">
               {posts.length === 0 && (
                 <div className="card" style={{ textAlign: 'center', color: '#000000ff', padding: 30 }}>
                   No posts yet — go share something on the feed! 🐾
@@ -390,7 +441,7 @@ export default function Profile() {
 
           {/* Reels Tab */}
           {tab === 'reels' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="profile-posts-grid">
               {reels.length === 0 && (
                 <div className="card" style={{ textAlign: 'center', color: '#000000ff', padding: 30 }}>
                   No reels yet — upload your first video moment! 🎬
@@ -425,13 +476,72 @@ export default function Profile() {
             </div>
           )}
 
+          {/* Friends Tab */}
+          {tab === 'friends' && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1rem' }}>
+                  🐾 Friends ({friends.length})
+                </div>
+                <button onClick={() => router.push('/friends')} style={{
+                  background: 'linear-gradient(135deg,#FF6B35,#6C4BF6)', color: '#fff', border: 'none',
+                  borderRadius: 10, padding: '7px 14px', fontFamily: 'Nunito, sans-serif',
+                  fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer'
+                }}>➕ Find Friends</button>
+              </div>
+              {friends.length === 0 ? (
+                <div className="card" style={{ textAlign: 'center', padding: 30 }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>🐾</div>
+                  <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1rem', color: '#1E1347', marginBottom: 6 }}>No friends yet</div>
+                  <p style={{ color: '#6B7280', fontSize: '0.85rem', marginBottom: 14 }}>Start connecting with other pets!</p>
+                  <button onClick={() => router.push('/friends')} style={{
+                    background: 'linear-gradient(135deg,#FF6B35,#6C4BF6)', color: '#fff', border: 'none',
+                    borderRadius: 10, padding: '9px 20px', fontFamily: 'Nunito, sans-serif',
+                    fontWeight: 800, fontSize: '0.88rem', cursor: 'pointer'
+                  }}>💡 Find Friends</button>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
+                  {friends.map(friend => (
+                    <div key={friend.id}
+                      onClick={() => router.push(`/user/${friend.user_id}`)}
+                      style={{
+                        background: '#fff', borderRadius: 14, padding: 14,
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center',
+                        border: '1px solid #EDE8FF', cursor: 'pointer',
+                        transition: 'transform 0.2s, box-shadow 0.2s',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 8px 20px rgba(108,75,246,0.15)' }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)' }}
+                    >
+                      <div style={{
+                        width: 56, height: 56, borderRadius: '50%', background: '#FFE8F0',
+                        border: '3px solid #22C55E', display: 'flex', alignItems: 'center',
+                        justifyContent: 'center', fontSize: '1.5rem', overflow: 'hidden', marginBottom: 8
+                      }}>
+                        {friend.avatar_url
+                          ? <img src={friend.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          : friend.emoji || '🐾'}
+                      </div>
+                      <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.88rem', color: '#1E1347' }}>{friend.pet_name}</div>
+                      <div style={{ fontSize: '0.72rem', color: '#6B7280', marginTop: 2 }}>{friend.pet_breed}</div>
+                      <div style={{ fontSize: '0.68rem', color: '#9CA3AF', marginTop: 1 }}>by {friend.owner_name}</div>
+                      <div style={{ marginTop: 8, fontSize: '0.7rem', color: '#6C4BF6', fontWeight: 700 }}>View Profile →</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* About Tab */}
           {tab === 'about' && (
             <div className="card">
               <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, marginBottom: 14 }}>
                 📋 About {pet.pet_name}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div className="profile-about-grid">
                 {[
                   ['🐾 Name', pet.pet_name],
                   ['🐶 Type', pet.pet_type],

@@ -322,7 +322,7 @@ meant_for_list: form.meant_for_list.includes('Other')
   )
 
   return (
-    <div style={{ background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))',padding:'30px', minHeight: '100vh' }}>
+    <div style={{ background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))', minHeight: '100vh' }}>
       <NavBar user={user} pet={pet} />
 
       {/* Lightbox */}
@@ -524,9 +524,9 @@ meant_for_list: form.meant_for_list.includes('Other')
       )}
 
       {/* Main Page Header Banner */}
-      <div style={{ maxWidth: 1100, margin: '70px auto 0', padding: '0 14px' }}>
+      <div style={{ maxWidth: 1100, margin: '70px auto 0', padding: '0 14px' }} className="marketplace-banner-wrap">
         <div className="card" style={{ background: 'linear-gradient(135deg,#FF6B35,#6C4BF6)', border: 'none', padding: 20 }}>
-          <div style={{ color: '#fff', fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.45rem', marginBottom: 4 }}>🛍️ PawVerse Marketplace</div>
+          <div style={{ color: '#fff', fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.45rem', marginBottom: 4,paddingTop:'40px' }}>🛍️ PawVerse Marketplace</div>
           <p style={{ color: 'rgba(255,255,255,0.88)', fontSize: '0.88rem', margin: 0 }}>
             {userLocation?.city ? `Showing products near ${userLocation.city} 📍` : 'Everything your fur baby needs 🐾'}
           </p>
@@ -613,6 +613,55 @@ meant_for_list: form.meant_for_list.includes('Other')
                   {c.icon} {c.label}
                 </button>
               ))}
+            </div>
+          )}
+
+          {/* Mobile Location + Range Bar (Visible only on mobile) */}
+          {isMobile && (
+            <div style={{ margin: '4px 14px 10px', background: '#fff', borderRadius: 14, padding: '10px 14px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+              {/* Location row */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: userLocation ? 8 : 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: '1rem' }}>📍</span>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1E1347' }}>
+                    {userLocation
+                      ? `${userLocation.city || 'Location set'}${userLocation.state ? `, ${userLocation.state}` : ''}`
+                      : 'No location set'}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setShowLocationModal(true)}
+                  style={{ background: 'none', border: 'none', color: '#6C4BF6', fontFamily: 'Nunito, sans-serif', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', padding: '4px 8px', borderRadius: 20, background: '#F3F0FF' }}>
+                  {userLocation ? '✏️ Change' : '📍 Set Location'}
+                </button>
+              </div>
+
+              {/* Range filter row — only if location is set */}
+              {userLocation && (
+                <>
+                  <div style={{ fontSize: '0.72rem', color: '#9CA3AF', fontWeight: 700, marginBottom: 5 }}>
+                    🔍 Search Range
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {RANGE_OPTIONS.map(r => (
+                      <button key={r} onClick={() => setRange(r)}
+                        style={{
+                          padding: '4px 10px', border: 'none', borderRadius: 20,
+                          background: range === r ? '#FF6B35' : '#F3F0FF',
+                          color: range === r ? '#fff' : '#6C4BF6',
+                          fontFamily: 'Nunito, sans-serif', fontWeight: 700,
+                          fontSize: '0.72rem', cursor: 'pointer',
+                          transition: 'all 0.15s'
+                        }}>
+                        {r}km
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: '0.65rem', color: '#9CA3AF', marginTop: 5 }}>
+                    {userLocation.latitude ? '📡 GPS active — exact filtering' : '🏙️ Area-based approx filtering'}
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -731,10 +780,15 @@ meant_for_list: form.meant_for_list.includes('Other')
       </div>
 
       {toast && (
-        <div style={{ position: 'fixed', bottom: 22, right: 22, background: '#1E1347', color: '#fff', padding: '12px 18px', borderRadius: 14, fontWeight: 700, fontSize: '0.86rem', zIndex: 3000 }}>
+        <div style={{ position: 'fixed', bottom: 80, right: 16, left: 16, maxWidth: 340, margin: '0 auto', background: '#1E1347', color: '#fff', padding: '12px 18px', borderRadius: 14, fontWeight: 700, fontSize: '0.86rem', zIndex: 3000, textAlign: 'center' }}>
           {toast}
         </div>
       )}
+
+      {/* Mobile FAB — Create Listing */}
+      <button className="marketplace-fab" onClick={() => setShowCreateModal(true)}>
+        ＋ Sell
+      </button>
     </div>
   )
 }
