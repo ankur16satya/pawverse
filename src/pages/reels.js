@@ -62,6 +62,15 @@ export default function Reels() {
   useEffect(() => { init() }, [])
 
   useEffect(() => {
+    if (user) {
+      const saved = localStorage.getItem(`pawverse_liked_reels_${user.id}`)
+      if (saved) {
+        try { setLikedMap(JSON.parse(saved)) } catch(err){}
+      }
+    }
+  }, [user])
+
+  useEffect(() => {
     // Auto-play reel in view, pause others
     Object.entries(videoRefs.current).forEach(([idx, vid]) => {
       if (!vid) return
@@ -165,7 +174,9 @@ export default function Reels() {
   const handleLike = async (reel, idx) => {
     const alreadyLiked = likedMap[reel.id]
     const newLikes = (reel.likes || 0) + (alreadyLiked ? -1 : 1)
-    setLikedMap(prev => ({ ...prev, [reel.id]: !alreadyLiked }))
+    const newLikedMap = { ...likedMap, [reel.id]: !alreadyLiked }
+    setLikedMap(newLikedMap)
+    if (user) localStorage.setItem(`pawverse_liked_reels_${user.id}`, JSON.stringify(newLikedMap))
     setReels(prev => prev.map((r, i) => i === idx ? { ...r, likes: newLikes } : r))
     await supabase.from('reels').update({ likes: newLikes }).eq('id', reel.id)
     if (!alreadyLiked && reel.pets?.user_id && reel.pets.user_id !== user.id) {

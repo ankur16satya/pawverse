@@ -26,6 +26,7 @@ export default function Home() {
   const [resetEmail, setResetEmail] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -113,7 +114,7 @@ export default function Home() {
     setError(''); setLoading(true)
     try {
       const { error: err } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-        redirectTo: `https://pawversesocial.com/?mode=reset_password`
+        redirectTo: `${window.location.origin}/?mode=reset_password`
       })
       if (err) throw err
       setSuccess('📧 Password reset email sent! Check your inbox and click the link.')
@@ -217,7 +218,12 @@ export default function Home() {
               <label className="label">Email</label>
               <input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@email.com" required />
               <label className="label">Password</label>
-              <input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 6 characters" required />
+              <div style={{ position: 'relative' }}>
+                <input className="input" type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 6 characters" required style={{ width: '100%', paddingRight: '40px', boxSizing: 'border-box' }} />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: 0 }}>
+                  {showPassword ? '👁️' : '🙈'}
+                </button>
+              </div>
               <button type="submit" className="btn-primary" disabled={loading} style={{ width: '100%', marginTop: 16, padding: 12, fontSize: '0.95rem', borderRadius: 12, textAlign: 'center' }}>
                 {loading ? 'Creating...' : 'Create Pet Profile 🐾'}
               </button>
@@ -238,7 +244,12 @@ export default function Home() {
               <label className="label">Email</label>
               <input className="input" type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} placeholder="you@email.com" required />
               <label className="label">Password</label>
-              <input className="input" type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} placeholder="Your password" required />
+              <div style={{ position: 'relative' }}>
+                <input className="input" type={showPassword ? "text" : "password"} value={loginPassword} onChange={e => setLoginPassword(e.target.value)} placeholder="Your password" required style={{ width: '100%', paddingRight: '40px', boxSizing: 'border-box' }} />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: 0 }}>
+                  {showPassword ? '👁️' : '🙈'}
+                </button>
+              </div>
               <button type="submit" className="btn-primary" disabled={loading} style={{ width: '100%', marginTop: 16, padding: 12, fontSize: '0.95rem', borderRadius: 12 }}>
                 {loading ? 'Signing in...' : 'Sign In →'}
               </button>
@@ -280,9 +291,19 @@ export default function Home() {
             {success && <div style={{ background: '#E8F8E8', color: '#22C55E', padding: '8px 12px', borderRadius: 8, fontSize: '0.82rem', marginBottom: 8 }}>{success}</div>}
             <form onSubmit={handleUpdatePassword}>
               <label className="label">New Password</label>
-              <input className="input" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="At least 6 characters" required />
+              <div style={{ position: 'relative', marginBottom: 12 }}>
+                <input className="input" type={showPassword ? "text" : "password"} value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="At least 6 characters" required style={{ width: '100%', paddingRight: '40px', boxSizing: 'border-box' }} />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: 0 }}>
+                  {showPassword ? '👁️' : '🙈'}
+                </button>
+              </div>
               <label className="label">Confirm New Password</label>
-              <input className="input" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Repeat your new password" required />
+              <div style={{ position: 'relative' }}>
+                <input className="input" type={showPassword ? "text" : "password"} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Repeat your new password" required style={{ width: '100%', paddingRight: '40px', boxSizing: 'border-box' }} />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: 0 }}>
+                  {showPassword ? '👁️' : '🙈'}
+                </button>
+              </div>
               <button type="submit" className="btn-primary" disabled={loading} style={{ width: '100%', marginTop: 16, padding: 12, fontSize: '0.95rem', borderRadius: 12 }}>
                 {loading ? 'Updating...' : '✅ Update Password'}
               </button>
