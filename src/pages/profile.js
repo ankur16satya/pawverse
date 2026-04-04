@@ -225,21 +225,33 @@ export default function Profile() {
             </div>
           </div>
 
-          {/* Edit Profile button */}
+          {/* Edit Profile & Logout buttons */}
           {!editing && (
-            <button
-              onClick={() => setEditing(true)}
-              style={{
-                position: 'absolute', top: 14, right: 14,
-                background: 'rgba(255,255,255,0.22)', color: '#fff',
-                backdropFilter: 'blur(8px)',
-                border: '1.5px solid rgba(255,255,255,0.35)',
-                borderRadius: 11, padding: '8px 16px',
-                fontFamily: 'Nunito, sans-serif', fontWeight: 800,
-                cursor: 'pointer', fontSize: '0.88rem'
-              }}>
-              ✏️ Edit Profile
-            </button>
+            <div style={{ position: 'absolute', top: 14, right: 14, display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setEditing(true)}
+                style={{
+                  background: 'rgba(255,255,255,0.22)', color: '#fff',
+                  backdropFilter: 'blur(8px)',
+                  border: '1.5px solid rgba(255,255,255,0.35)',
+                  borderRadius: 11, padding: '8px 16px',
+                  fontFamily: 'Nunito, sans-serif', fontWeight: 800,
+                  cursor: 'pointer', fontSize: '0.88rem'
+                }}>
+                ✏️ Edit Profile
+              </button>
+              <button
+                onClick={async () => { await supabase.auth.signOut(); router.push('/') }}
+                style={{
+                  background: '#FF4757', color: '#fff',
+                  border: 'none',
+                  borderRadius: 11, padding: '8px 16px',
+                  fontFamily: 'Nunito, sans-serif', fontWeight: 800,
+                  cursor: 'pointer', fontSize: '0.88rem'
+                }}>
+                🚪 Logout
+              </button>
+            </div>
           )}
         </div>
 

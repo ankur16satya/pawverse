@@ -82,8 +82,9 @@ body {
   box-shadow: 0 -4px 20px rgba(108,75,246,0.08);
   z-index: 998;
   align-items: center;
-  justify-content: space-around;
-  padding: 0 4px;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 16px;
 }
 .mobile-nav-btn {
   display: flex;
@@ -266,7 +267,6 @@ body {
     margin-top: 62px !important;
     padding: 8px !important;
   }
-  .marketplace-sidebar { display: none !important; }
   .marketplace-categories-mobile {
     display: flex !important;
     overflow-x: auto;

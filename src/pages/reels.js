@@ -49,9 +49,15 @@ export default function Reels() {
       content: commentText.trim()
     }).select('*, pets(pet_name, emoji, avatar_url, user_id)').single()
     
+    if (error) {
+      console.error(error)
+      alert("Could not post comment: " + error.message)
+    }
+
     if (data) {
       setComments(prev => [...prev, data])
       setCommentText('')
+      setReels(prev => prev.map(r => r.id === commentsModal.id ? { ...r, comments_count: (r.comments_count || 0) + 1 } : r))
     }
     setSendingComment(false)
   }
@@ -264,18 +270,6 @@ export default function Reels() {
     <div style={{ background: '#000', minHeight: '100vh' }}>
       <NavBar user={user} pet={pet} />
 
-      {/* Upload Button */}
-      <button
-        onClick={() => setShowUpload(true)}
-        style={{
-          position: 'fixed', bottom: 80, right: 20, zIndex: 500,
-          background: 'linear-gradient(135deg, #FF6B35, #6C4BF6)',
-          color: '#fff', border: 'none', borderRadius: '50%',
-          width: 52, height: 52, fontSize: '1.4rem', cursor: 'pointer',
-          boxShadow: '0 4px 20px rgba(108,75,246,0.5)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center'
-        }}>➕</button>
-
       {reels.length === 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', color: '#fff', gap: 16, paddingTop: 100 }}>
           <div style={{ fontSize: '4rem' }}>🎬</div>
@@ -288,8 +282,8 @@ export default function Reels() {
           ref={containerRef}
           onScroll={handleScroll}
           style={{
-            height: 'calc(100vh - 70px)', 
-            marginTop: 70, // Start below navbar exactly
+            height: 'calc(100dvh - 70px - 60px)',
+            marginTop: 70,
             overflowY: 'scroll',
             scrollSnapType: 'y mandatory',
             scrollBehavior: 'smooth',
@@ -423,7 +417,7 @@ export default function Reels() {
 
       {/* ── COMMENTS MODAL ── */}
       {commentsModal && (
-        <div onClick={() => setCommentsModal(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 9100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 0 }}>
+        <div onClick={() => setCommentsModal(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 9999, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 0 }}>
           <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '24px 24px 0 0', width: '100%', maxWidth: 480, padding: 24, paddingBottom: 40, maxHeight: '70vh', display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #EDE8FF', paddingBottom: 12, marginBottom: 16 }}>
               <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.2rem', color: '#1E1347' }}>Comments</div>

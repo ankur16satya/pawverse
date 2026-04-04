@@ -176,9 +176,9 @@ export default function PostPage() {
           </div>
 
           {/* Content */}
-          {post.content && (
+          {(post.content || post.caption) && (
             <p style={{ fontSize: '1rem', lineHeight: 1.7, color: '#1E1347', marginBottom: 12 }}>
-              {post.content.split(/(\s+)/).map((word, i) =>
+              {(post.content || post.caption).split(/(\s+)/).map((word, i) =>
                 word.startsWith('#')
                   ? <span key={i} style={{ color: '#6C4BF6', fontWeight: 700 }}>{word}</span>
                   : word

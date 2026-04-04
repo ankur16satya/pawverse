@@ -38,6 +38,14 @@ export default function Marketplace() {
   const [submitting, setSubmitting] = useState(false)
   const fileInputRef = useRef(null)
 
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth <= 768)
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
   const emptyForm = {
   name: '', brand: '', description: '', price: '',
   category: 'food', images: [], imagePreviews: [],
@@ -515,11 +523,21 @@ meant_for_list: form.meant_for_list.includes('Other')
         </div>
       )}
 
+      {/* Main Page Header Banner */}
+      <div style={{ maxWidth: 1100, margin: '70px auto 0', padding: '0 14px' }}>
+        <div className="card" style={{ background: 'linear-gradient(135deg,#FF6B35,#6C4BF6)', border: 'none', padding: 20 }}>
+          <div style={{ color: '#fff', fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.45rem', marginBottom: 4 }}>🛍️ PawVerse Marketplace</div>
+          <p style={{ color: 'rgba(255,255,255,0.88)', fontSize: '0.88rem', margin: 0 }}>
+            {userLocation?.city ? `Showing products near ${userLocation.city} 📍` : 'Everything your fur baby needs 🐾'}
+          </p>
+        </div>
+      </div>
+
       {/* Main Layout */}
-      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 14, maxWidth: 1100, margin: '70px auto 0', padding: 14 }}>
+      <div className="marketplace-layout" style={{ marginTop: '14px', padding: isMobile ? 0 : 8 }}>
 
         {/* Sidebar */}
-        <div style={{ position: 'sticky', top: 70, alignSelf: 'start', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="marketplace-sidebar" style={{ position: 'sticky', top: 70, alignSelf: 'start', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
           {/* Location */}
                    <div className="card" style={{ padding: 12 }}>
@@ -585,13 +603,18 @@ meant_for_list: form.meant_for_list.includes('Other')
         </div>
 
         {/* Main Content */}
-        <div>
-          <div className="card" style={{ background: 'linear-gradient(135deg,#FF6B35,#6C4BF6)', border: 'none', padding: 20, marginBottom: 14 }}>
-            <div style={{ color: '#fff', fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.45rem', marginBottom: 4 }}>🛍️ PawVerse Marketplace</div>
-            <p style={{ color: 'rgba(255,255,255,0.88)', fontSize: '0.88rem', margin: 0 }}>
-              {userLocation?.city ? `Showing products near ${userLocation.city} 📍` : 'Everything your fur baby needs 🐾'}
-            </p>
-          </div>
+        <div style={{ flex: 1, minWidth: 0, boxSizing: 'border-box' }}>
+
+          {/* Mobile Category Strip (Visible only on mobile) */}
+          {isMobile && (
+            <div className="marketplace-categories-mobile" style={{ display: 'flex', overflowX: 'auto', gap: 8, padding: '8px 14px', scrollbarWidth: 'none' }}>
+              {CATEGORIES.map(c => (
+                <button key={c.key} className={`mobile-cat-pill ${category === c.key ? 'active' : ''}`} onClick={() => setCategory(c.key)} style={{ padding: '8px 16px', whiteSpace: 'nowrap', borderRadius: 20, border: 'none', background: category === c.key ? '#FF6B35' : '#fff', color: category === c.key ? '#fff' : '#1E1347', fontWeight: 700 }}>
+                  {c.icon} {c.label}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Title */}
           <div style={{ marginBottom: 14 }}>
@@ -618,7 +641,7 @@ meant_for_list: form.meant_for_list.includes('Other')
               </button>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 14 }}>
+            <div className="product-grid">
                             {filteredListings.map(item => {
                 const img = getFirstImage(item)
                 const isDoctor = item.is_service && item.brand === 'Doctor'

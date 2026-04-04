@@ -465,15 +465,21 @@ export default function Chat() {
   )
 
   return (
-   <div style={{ 
+    <div style={{ 
       background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))', 
       padding: isMobile ? 0 : '50px', 
-      height: '100dvh', // Viewport height dynamic 
+      height: (isMobile && !activeConv) ? 'calc(100dvh - 130px)' : '100dvh',
+      marginTop: (isMobile && !activeConv) ? 70 : 0,
       display: 'flex', 
       flexDirection: 'column',
       boxSizing: 'border-box',
+      width: '100%',
+      maxWidth: '100vw',
       overflow: 'hidden'
     }}>
+      <style>{`
+        body { padding-bottom: 0 !important; }
+      `}</style>
       {(!isMobile || !activeConv) && <NavBar user={user} pet={pet} unreadMessages={totalUnread} />}
       <div style={{ 
         flex: 1, 
@@ -616,7 +622,8 @@ export default function Chat() {
           border: isMobile ? 'none' : '2px solid #000',
           borderLeft: isMobile ? 'none' : 'none',
           position: 'relative', 
-          width: isMobile ? '100%' : 'auto',
+          width: '100%',
+          maxWidth: '100%',
           minWidth: 0,
           overflow: 'hidden'
         }}>

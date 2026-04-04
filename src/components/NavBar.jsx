@@ -239,7 +239,7 @@ export default function NavBar({ user, pet }) {
         }}>
 
         {/* Logo */}
-        <div onClick={() => router.push('/feed')} style={{ cursor: 'pointer', flexShrink: 0 }}>
+        <div onClick={() => router.push('/feed')} style={{ cursor: 'pointer', flexShrink: 0, transform: isMobile ? 'scale(1.4)' : 'scale(1.2)', marginLeft: isMobile ? 10 : 0 }}>
           <img src="/logo.png" alt="logo"
             style={{ height: 120, width: 'auto', padding: '4px', objectFit: 'contain' }} />
         </div>
@@ -342,7 +342,7 @@ export default function NavBar({ user, pet }) {
             {showNotifs && (
               <div
                 className="notif-dropdown"
-                style={{ position: 'absolute', top: 44, right: 0, width: 310, background: '#fff', borderRadius: 16, boxShadow: '0 8px 32px rgba(108,75,246,0.18)', border: '1px solid #EDE8FF', zIndex: 2000, overflow: 'hidden', animation: 'fadeUp 0.2s ease' }}>
+                style={{ position: isMobile ? 'fixed' : 'absolute', top: isMobile ? 70 : 44, right: isMobile ? 'auto' : 0, left: isMobile ? '50%' : 'auto', transform: isMobile ? 'translateX(-50%)' : 'none', width: isMobile ? 360 : 310, maxWidth: '95vw', background: '#fff', borderRadius: 16, boxShadow: '0 8px 32px rgba(108,75,246,0.18)', border: '1px solid #EDE8FF', zIndex: 2000, overflow: 'hidden', animation: 'fadeUp 0.2s ease' }}>
                 <div style={{ padding: '12px 16px', borderBottom: '1px solid #EDE8FF', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.95rem' }}>🔔 Notifications</span>
                   {unreadCount === 0 && notifications.length > 0 && <span style={{ fontSize: '0.7rem', color: '#22C55E', fontWeight: 700 }}>✓ All read</span>}
@@ -384,18 +384,11 @@ export default function NavBar({ user, pet }) {
             )}
           </div>
 
-          {/* Avatar */}
-          <div onClick={() => router.push('/profile')}
-            style={{ width: 36, height: 36, borderRadius: '50%', background: '#FFE8F0', border: '2.5px solid #FF6B35', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', cursor: 'pointer', overflow: 'hidden' }}>
-            {pet?.avatar_url ? <img src={pet.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : pet?.emoji || '🐾'}
-          </div>
-
-          {/* Logout — hidden on mobile */}
+          {/* Logout */}
           <button
-            className="navbar-logout"
             onClick={handleLogout}
-            style={{ background: 'none', border: '1px solid #EDE8FF', borderRadius: 8, padding: '4px 10px', fontSize: '0.75rem', cursor: 'pointer', color: '#6B7280', fontFamily: 'Nunito, sans-serif' }}>
-            Logout
+            style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#FFF0E8', border: 'none', borderRadius: 12, padding: '6px 12px', fontSize: '0.8rem', cursor: 'pointer', color: '#FF6B35', fontWeight: 800, fontFamily: 'Nunito, sans-serif' }}>
+            🚪 Logout
           </button>
         </div>
       </nav>
@@ -416,48 +409,10 @@ export default function NavBar({ user, pet }) {
           </button>
         ))}
 
-        {/* Bell button in mobile nav */}
-        <button
-          className={`mobile-nav-btn`}
-          onClick={handleBellClick}
-          style={{ position: 'relative' }}>
-          <div style={{ position: 'relative', display: 'inline-block' }}>
-            <span className="nav-icon">🔔</span>
-            {unreadCount > 0 && (
-              <span className="mobile-nav-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
-            )}
-          </div>
-          <span>Alerts</span>
-        </button>
+
       </nav>
 
-      {/* Mobile notification dropdown — full width */}
-      {showNotifs && isMobile && (
-        <div style={{ position: 'fixed', bottom: 68, left: 0, right: 0, background: '#fff', borderTop: '1px solid #EDE8FF', borderRadius: '20px 20px 0 0', boxShadow: '0 -8px 32px rgba(0,0,0,0.15)', zIndex: 2000, maxHeight: '70vh', overflowY: 'auto', animation: 'fadeUp 0.3s ease' }}>
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid #EDE8FF', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800 }}>🔔 Notifications</span>
-            <button onClick={() => setShowNotifs(false)} style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#6B7280' }}>✕</button>
-          </div>
-          {notifications.length === 0 ? (
-            <div style={{ padding: 28, textAlign: 'center' }}>
-              <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>🐾</div>
-              <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, color: '#1E1347' }}>No notifications yet</div>
-            </div>
-          ) : notifications.map(n => (
-            <div key={n.id}
-              onClick={() => { setShowNotifs(false); if (n.type === 'friend_request') router.push('/friends'); if (n.type === 'message') router.push('/chat') }}
-              style={{ display: 'flex', gap: 10, padding: '12px 16px', borderBottom: '1px solid #F3F0FF', background: n.is_read ? '#fff' : '#F9F5FF' }}>
-              <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#F3F0FF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', flexShrink: 0 }}>
-                {notifIcon(n.type)}
-              </div>
-              <div style={{ flex: 1 }}>
-                <p style={{ fontSize: '0.85rem', margin: 0, lineHeight: 1.5, color: '#1E1347' }}>{n.message}</p>
-                <span style={{ fontSize: '0.72rem', color: '#9CA3AF' }}>{timeAgo(n.created_at)}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+
     </>
   )
 }
