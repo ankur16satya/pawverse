@@ -9,6 +9,7 @@ export default function Profile() {
   const [pet, setPet] = useState(null)
   const [posts, setPosts] = useState([])
   const [reels, setReels] = useState([])
+  const [friends, setFriends] = useState([])
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({})
   const [saving, setSaving] = useState(false)
@@ -27,6 +28,23 @@ export default function Profile() {
         supabase.from('posts').select('*').eq('pet_id', fetchPetId).order('created_at', { ascending: false }).limit(20).then(({ data }) => setPosts(data || []))
         supabase.from('reels').select('*').eq('pet_id', fetchPetId).order('created_at', { ascending: false }).limit(20).then(({ data }) => setReels(data || []))
       }
+
+      const fetchFriends = async (userId) => {
+        const { data: sentFriends } = await supabase.from('friend_requests').select('receiver_id').eq('sender_id', userId).eq('status', 'accepted')
+        const { data: receivedFriends } = await supabase.from('friend_requests').select('sender_id').eq('receiver_id', userId).eq('status', 'accepted')
+        const friendList = []
+        for (const req of (sentFriends || [])) {
+          const { data: friendPet } = await supabase.from('pets').select('*').eq('user_id', req.receiver_id).single()
+          if (friendPet) friendList.push(friendPet)
+        }
+        for (const req of (receivedFriends || [])) {
+          const { data: friendPet } = await supabase.from('pets').select('*').eq('user_id', req.sender_id).single()
+          if (friendPet) friendList.push(friendPet)
+        }
+        setFriends(friendList)
+      }
+      
+      fetchFriends(session.user.id)
 
       const { data: existingPet } = await supabase.from('pets').select('*').eq('user_id', session.user.id).single()
 

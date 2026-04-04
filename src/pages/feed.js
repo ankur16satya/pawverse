@@ -119,7 +119,7 @@ export default function Feed() {
     setPosts(prev=>prev.map(p=>p.id===postId?{...p,comments_count:(p.comments_count||0)+1}:p))
     const post = posts.find(p=>p.id===postId)
     if (post?.pets?.user_id&&post.pets.user_id!==user.id) {
-      await supabase.from('notifications').insert({user_id:post.pets.user_id,type:'comment',message:`${pet.pet_name} commented: "${text.slice(0,40)}${text.length>40?'...':''}" 💬`})
+      await supabase.from('notifications').insert({user_id:post.pets.user_id,type:'comment',message:`${pet.pet_name} commented: "${text.slice(0,40)}${text.length>40?'...':''}" 💬|/post/${post.id}`})
       playSound('notification')
     }
   }
@@ -187,7 +187,7 @@ export default function Feed() {
           const { data:fS } = await supabase.from('friend_requests').select('receiver_id').eq('sender_id',user.id).eq('status','accepted')
           const { data:fR } = await supabase.from('friend_requests').select('sender_id').eq('receiver_id',user.id).eq('status','accepted')
           for (const fid of [...(fS||[]).map(f=>f.receiver_id),...(fR||[]).map(f=>f.sender_id)]) {
-            await supabase.from('notifications').insert({user_id:fid,type:'post',message:`${pet.pet_name} posted a new reel! 🎬`})
+            await supabase.from('notifications').insert({user_id:fid,type:'post',message:`${pet.pet_name} posted a new reel! 🎬|/post/${postData.id}`})
           }
           playSound('notification')
         }
@@ -206,7 +206,7 @@ export default function Feed() {
           const { data:fS } = await supabase.from('friend_requests').select('receiver_id').eq('sender_id',user.id).eq('status','accepted')
           const { data:fR } = await supabase.from('friend_requests').select('sender_id').eq('receiver_id',user.id).eq('status','accepted')
           for (const fid of [...(fS||[]).map(f=>f.receiver_id),...(fR||[]).map(f=>f.sender_id)]) {
-            await supabase.from('notifications').insert({user_id:fid,type:'post',message:`${pet.pet_name} just posted something new! 🐾`})
+            await supabase.from('notifications').insert({user_id:fid,type:'post',message:`${pet.pet_name} just posted something new! 🐾|/post/${postData.id}`})
           }
           playSound('notification')
         }
@@ -242,7 +242,7 @@ export default function Feed() {
     }
     
     if (!isLiked && post.pets?.user_id && post.pets.user_id !== user.id)
-      await supabase.from('notifications').insert({user_id:post.pets.user_id,type:'like',message:`${pet.pet_name} pawed your ${post.type}! ❤️`})
+      await supabase.from('notifications').insert({user_id:post.pets.user_id,type:'like',message:`${pet.pet_name} pawed your ${post.type}! ❤️|/post/${post.id}`})
   }
 
   const handleShare = (post) => {
@@ -279,7 +279,7 @@ export default function Feed() {
       shared_post_id:post.id, is_read:false,
       shared_post_preview:JSON.stringify({id:post.id,content:post.content?.slice(0,120)||'',image_url:post.image_url||null,pet_name:post.pets?.pet_name||'',pet_emoji:post.pets?.emoji||'🐾',avatar_url:post.pets?.avatar_url||null,owner_name:post.pets?.owner_name||''}),
     })
-    await supabase.from('notifications').insert({user_id:friend.user_id,type:'message',message:`${pet.pet_name} shared a post with you! 🐾`})
+    await supabase.from('notifications').insert({user_id:friend.user_id,type:'message',message:`${pet.pet_name} shared a post with you! 🐾|/chat`})
     alert(`✅ Post shared with ${friend.pet_name}!`)
     setShareToFriendsModal(null)
   }
@@ -311,7 +311,7 @@ export default function Feed() {
     setFriendStatuses(prev=>({...prev,[otherPet.user_id]:'pending'}))
     const { error } = await supabase.from('friend_requests').insert({sender_id:user.id,receiver_id:otherPet.user_id,status:'pending'})
     if (error) { setFriendStatuses(prev=>({...prev,[otherPet.user_id]:null})); return }
-    await supabase.from('notifications').insert({user_id:otherPet.user_id,type:'friend_request',message:`${pet.pet_name} sent you a friend request! 🐾`})
+    await supabase.from('notifications').insert({user_id:otherPet.user_id,type:'friend_request',message:`${pet.pet_name} sent you a friend request! 🐾|/friends`})
   }
 
   const getFriendButtonLabel = (userId) => {

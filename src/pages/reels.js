@@ -185,7 +185,7 @@ export default function Reels() {
       await supabase.from('notifications').insert({
         user_id: reel.pets.user_id,
         type: 'like',
-        message: `${pet.pet_name} liked your reel! 🎬❤️`,
+        message: `${pet.pet_name} liked your reel! 🎬❤️|/post/${reel.id}`,
       })
     }
   }

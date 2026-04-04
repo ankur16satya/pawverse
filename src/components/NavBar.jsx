@@ -208,8 +208,8 @@ export default function NavBar({ user, pet }) {
     { href: '/feed',        icon: <Home size={26} />, label: 'Feed' },
     { href: '/reels',       icon: <Video size={26} />, label: 'Reels' },
     { href: '/marketplace', icon: <ShoppingBag size={26} />, label: 'Market' },
+    { href: '/health',      icon: <HeartPulse size={26} />, label: 'Health' },
     { href: '/chat',        icon: <MessageCircle size={26} />, label: 'Chat',  badge: unreadMsgCount },
-    { href: '/friends',     icon: <Users size={26} />, label: 'Friends', badge: pendingFriendCount },
     { href: '/profile',     icon: '🐾', label: 'Profile' },
   ]
 
@@ -355,19 +355,26 @@ export default function NavBar({ user, pet }) {
                       <div style={{ color: '#6B7280', fontSize: '0.75rem', marginTop: 4 }}>When someone paws your post, you'll see it here!</div>
                     </div>
                   ) : notifications.map(n => (
-                    <div key={n.id}
+                      <div key={n.id}
                       onClick={() => {
-                        if (n.type === 'friend_request') { setShowNotifs(false); router.push('/friends') }
-                        if (n.type === 'message') { setShowNotifs(false); router.push('/chat') }
+                        setShowNotifs(false)
+                        const linkPattern = /\|(\/.*)$/
+                        const match = n.message.match(linkPattern)
+                        if (match) { router.push(match[1]) }
+                        else if (n.type === 'friend_request') { router.push('/friends') }
+                        else if (n.type === 'message') { router.push('/chat') }
+                        else { router.push('/feed') } // Fallback
                       }}
-                      style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 14px', background: n.is_read ? '#fff' : '#F9F5FF', borderBottom: '1px solid #F3F0FF', cursor: ['friend_request','message'].includes(n.type) ? 'pointer' : 'default', transition: 'background 0.2s' }}
-                      onMouseEnter={e => { if (['friend_request','message'].includes(n.type)) e.currentTarget.style.background = '#F3F0FF' }}
+                      style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 14px', background: n.is_read ? '#fff' : '#F9F5FF', borderBottom: '1px solid #F3F0FF', cursor: 'pointer', transition: 'background 0.2s' }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#F3F0FF'}
                       onMouseLeave={e => e.currentTarget.style.background = n.is_read ? '#fff' : '#F9F5FF'}>
                       <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#F3F0FF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', flexShrink: 0 }}>
                         {notifIcon(n.type)}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontSize: '0.8rem', color: '#1E1347', margin: 0, lineHeight: 1.5 }}>{n.message}</p>
+                        <p style={{ fontSize: '0.8rem', color: '#1E1347', margin: 0, lineHeight: 1.5 }}>
+                          {n.message.split('|')[0]}
+                        </p>
                         <span style={{ fontSize: '0.68rem', color: '#6B7280' }}>{timeAgo(n.created_at)}</span>
                       </div>
                       {!n.is_read && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#6C4BF6', flexShrink: 0, marginTop: 4 }} />}
