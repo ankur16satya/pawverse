@@ -62,15 +62,6 @@ export default function Reels() {
   useEffect(() => { init() }, [])
 
   useEffect(() => {
-    if (user) {
-      const saved = localStorage.getItem(`pawverse_liked_reels_${user.id}`)
-      if (saved) {
-        try { setLikedMap(JSON.parse(saved)) } catch(err){}
-      }
-    }
-  }, [user])
-
-  useEffect(() => {
     // Auto-play reel in view, pause others
     Object.entries(videoRefs.current).forEach(([idx, vid]) => {
       if (!vid) return
@@ -88,6 +79,11 @@ export default function Reels() {
       if (sessionError) console.error("Session error:", sessionError)
       if (!session) { router.push('/'); return }
       setUser(session.user)
+      
+      const saved = localStorage.getItem(`pawverse_liked_reels_${session.user.id}`)
+      if (saved) {
+        try { setLikedMap(JSON.parse(saved)) } catch(err){}
+      }
       
       const { data: petData, error: petError } = await supabase.from('pets').select('*').eq('user_id', session.user.id).single()
       if (petError) console.error("Pet fetch error:", petError)

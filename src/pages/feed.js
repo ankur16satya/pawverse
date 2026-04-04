@@ -55,7 +55,7 @@ export default function Feed() {
     setUser(session.user)
     const { data: petData } = await supabase.from('pets').select('*').eq('user_id', session.user.id).single()
     setPet(petData)
-    await fetchPosts()
+    await fetchPosts(session.user.id)
     const { data: others } = await supabase.from('pets').select('*').neq('user_id', session.user.id).limit(6)
     setSuggestions(others || [])
     const { data: sReqs } = await supabase.from('friend_requests').select('*').eq('sender_id', session.user.id)
@@ -68,17 +68,28 @@ export default function Feed() {
     if (fIds.length > 0) { const { data: fp } = await supabase.from('pets').select('*').in('user_id', fIds); setFriends(fp||[]) }
     supabase.channel(`feed-posts-${session.user.id}`)
       .on('postgres_changes', { event:'UPDATE', schema:'public', table:'posts' }, (p) => { const u=p.new; setPosts(prev=>prev.map(x=>x.id===u.id?{...x,likes:u.likes,comments_count:u.comments_count,shares_count:u.shares_count}:x)) })
-      .on('postgres_changes', { event:'INSERT', schema:'public', table:'posts' }, (p) => { if(p.new.pet_id!==petData?.id) fetchPosts() })
+      .on('postgres_changes', { event:'INSERT', schema:'public', table:'posts' }, (p) => { if(p.new.pet_id!==petData?.id) fetchPosts(session.user.id) })
       .subscribe()
     setLoading(false)
   }
 
-  const fetchPosts = async () => {
+  const fetchPosts = async (userId) => {
+    const currentUserId = userId || user?.id
     const { data: pD } = await supabase.from('posts').select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id)').order('created_at',{ascending:false}).limit(20)
     const { data: rD } = await supabase.from('reels').select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id)').order('created_at',{ascending:false}).limit(20)
-    const mixed = [...(pD||[]),...(rD||[])].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,20)
+    
+    const pD_typed = (pD||[]).map(p => ({...p, type: 'post'}))
+    const rD_typed = (rD||[]).map(r => ({...r, type: 'reel'}))
+    
+    const mixed = [...pD_typed,...rD_typed].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,20)
     const hidden = JSON.parse(localStorage.getItem('hidden_posts')||'[]')
-    setPosts(mixed.filter(p=>!hidden.includes(p.id)))
+    
+    const savedLikes = JSON.parse(localStorage.getItem(`pawverse_feed_likes_${currentUserId}`) || '{}')
+    
+    setPosts(mixed.filter(p=>!hidden.includes(p.id)).map(p => ({
+      ...p,
+      liked_by_me: !!savedLikes[p.id]
+    })))
   }
 
   const fetchComments = async (postId) => {
@@ -205,12 +216,33 @@ export default function Feed() {
   }
 
   const toggleLike = async (post) => {
-    const newLikes=(post.likes||0)+(post.liked_by_me?-1:1)
-    setPosts(prev=>prev.map(p=>p.id===post.id?{...p,likes:newLikes,liked_by_me:!p.liked_by_me}:p))
-    const { error } = await supabase.from('posts').update({likes:newLikes}).eq('id',post.id)
-    if (error) { setPosts(prev=>prev.map(p=>p.id===post.id?{...p,likes:post.likes,liked_by_me:post.liked_by_me}:p)); return }
-    if (!post.liked_by_me&&post.pets?.user_id&&post.pets.user_id!==user.id)
-      await supabase.from('notifications').insert({user_id:post.pets.user_id,type:'like',message:`${pet.pet_name} pawed your post! ❤️`})
+    const isLiked = post.liked_by_me
+    const newLikes = (post.likes||0) + (isLiked ? -1 : 1)
+    
+    const savedLikes = JSON.parse(localStorage.getItem(`pawverse_feed_likes_${user.id}`) || '{}')
+    savedLikes[post.id] = !isLiked
+    localStorage.setItem(`pawverse_feed_likes_${user.id}`, JSON.stringify(savedLikes))
+    
+    if (post.type === 'reel') {
+        const reelLikes = JSON.parse(localStorage.getItem(`pawverse_liked_reels_${user.id}`) || '{}')
+        reelLikes[post.id] = !isLiked
+        localStorage.setItem(`pawverse_liked_reels_${user.id}`, JSON.stringify(reelLikes))
+    }
+
+    setPosts(prev=>prev.map(p=>p.id===post.id?{...p,likes:newLikes,liked_by_me:!isLiked}:p))
+    
+    const tableName = post.type === 'reel' ? 'reels' : 'posts'
+    const { error } = await supabase.from(tableName).update({likes:newLikes}).eq('id',post.id)
+    
+    if (error) { 
+        setPosts(prev=>prev.map(p=>p.id===post.id?{...p,likes:post.likes,liked_by_me:isLiked}:p))
+        savedLikes[post.id] = isLiked
+        localStorage.setItem(`pawverse_feed_likes_${user.id}`, JSON.stringify(savedLikes))
+        return 
+    }
+    
+    if (!isLiked && post.pets?.user_id && post.pets.user_id !== user.id)
+      await supabase.from('notifications').insert({user_id:post.pets.user_id,type:'like',message:`${pet.pet_name} pawed your ${post.type}! ❤️`})
   }
 
   const handleShare = (post) => {

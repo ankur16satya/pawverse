@@ -60,12 +60,26 @@ export default function PostPage() {
     const tableName = isReel ? 'reels' : 'posts';
     await supabase.from(tableName).update({ views: (postData.views || 0) + 1 }).eq('id', id)
 
+    // load liked state
+    if (session) {
+      const lsKey = isReel ? `pawverse_liked_reels_${session.user.id}` : `pawverse_feed_likes_${session.user.id}`
+      const saved = JSON.parse(localStorage.getItem(lsKey) || '{}')
+      setLikedByMe(!!saved[id])
+    }
+
     setLoading(false)
   }
 
   const handleLike = async () => {
     if (!user || !post) return
     const newLikes = (post.likes || 0) + (likedByMe ? -1 : 1)
+    
+    // update localStorage cache
+    const lsKey = post.is_reel ? `pawverse_liked_reels_${user.id}` : `pawverse_feed_likes_${user.id}`
+    const saved = JSON.parse(localStorage.getItem(lsKey) || '{}')
+    saved[post.id] = !likedByMe
+    localStorage.setItem(lsKey, JSON.stringify(saved))
+
     setLikedByMe(!likedByMe)
     setPost(p => ({ ...p, likes: newLikes }))
     const tableName = post.is_reel ? 'reels' : 'posts';

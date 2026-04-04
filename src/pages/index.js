@@ -29,21 +29,27 @@ export default function Home() {
   const [showPassword, setShowPassword] = useState(false)
 
   useEffect(() => {
+    const hash = window.location.hash
+    const params = new URLSearchParams(window.location.search)
+
+    if (hash.includes('type=recovery') || params.get('mode') === 'reset_password') {
+      setMode('update_password')
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        // Check if user came from password reset link
-        const hash = window.location.hash
-        const params = new URLSearchParams(window.location.search)
-        if (hash.includes('type=recovery') || params.get('mode') === 'reset_password') {
-          setMode('update_password')
-        } else {
+        const currentHash = window.location.hash
+        const currentParams = new URLSearchParams(window.location.search)
+        if (!currentHash.includes('type=recovery') && currentParams.get('mode') !== 'reset_password') {
           router.push('/feed')
         }
       }
     })
-    // Handle auth state change for password reset
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') {
+        setMode('update_password')
+      } else if (event === 'SIGNED_IN' && window.location.hash.includes('type=recovery')) {
         setMode('update_password')
       }
     })
@@ -114,7 +120,7 @@ export default function Home() {
     setError(''); setLoading(true)
     try {
       const { error: err } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-        redirectTo: `${window.location.origin}/?mode=reset_password`
+        redirectTo: `https://pawversesocial.com/?mode=reset_password`
       })
       if (err) throw err
       setSuccess('📧 Password reset email sent! Check your inbox and click the link.')
