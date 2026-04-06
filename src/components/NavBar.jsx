@@ -15,6 +15,8 @@ import {
 } from "lucide-react"
 // Sound player
 const sounds = {}
+const VAPID_PUBLIC_KEY = 'BMkQXUNaNbEpyVYllsyc4784dZJM2dMwAwoWJCnqBjOsjcu9QFPWWZ60L_wRMw-FZAYdMCZTnooVtth3V5VEzB38';
+
 const playSound = (type) => {
   try {
     const src = type === 'message' ? '/message.mp3' : '/notification.mp3'
@@ -221,12 +223,14 @@ export default function NavBar({ user, pet }) {
       const { data: exact } = await supabase
         .from('pets')
         .select('id, pet_name, owner_name, emoji, avatar_url, user_id, pet_breed')
+        .eq('is_health_pet', false)
         .ilike('owner_name', q)
         .limit(3)
 
       const { data: partial } = await supabase
         .from('pets')
         .select('id, pet_name, owner_name, emoji, avatar_url, user_id, pet_breed')
+        .eq('is_health_pet', false)
         .or(`pet_name.ilike.%${q}%,owner_name.ilike.%${q}%`)
         .limit(10)
 

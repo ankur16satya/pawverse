@@ -345,15 +345,17 @@ export default function Chat() {
       }).eq('id', activeConv.id)
 
       // ── SEND REAL BACKGROUND PUSH ──
-      fetch('/api/push', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: activeFriend.user_id,
-          title: `💬 New Message from ${pet?.pet_name}`,
-          body: newMessage.trim() || '📸 Sent an image',
-          url: '/chat'
-        })
-      }).catch(e => console.error('Push failed:', e))
+      if (activeFriend?.user_id) {
+        fetch('/api/push', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: activeFriend.user_id,
+            title: `💬 New Message from ${pet?.pet_name || 'a Friend'}`,
+            body: newMessage.trim() || '📸 Sent an image',
+            url: '/chat'
+          })
+        }).catch(e => console.error('Push fetch failed:', e))
+      }
 
       setNewMessage('')
       setSelectedImage(null)

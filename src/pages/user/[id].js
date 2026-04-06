@@ -36,7 +36,7 @@ export default function UserProfile() {
 
     // Get profile pet
     const { data: profilePetData } = await supabase
-      .from('pets').select('*').eq('user_id', id).single()
+      .from('pets').select('*').eq('user_id', id).eq('is_health_pet', false).single()
     setProfilePet(profilePetData)
 
     // Get posts

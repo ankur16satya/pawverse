@@ -30,8 +30,17 @@ export default async function handler(req, res) {
       .select('subscription')
       .eq('user_id', user_id);
 
-    if (error) throw error;
-    if (!subs || subs.length === 0) return res.status(200).json({ success: true, message: 'No subscriptions found' });
+    if (error) {
+       console.error(`❌ DB Error fetching subs for ${user_id}:`, error);
+       throw error;
+    }
+    
+    if (!subs || subs.length === 0) {
+       console.log(`ℹ️ No push subscriptions found for user ${user_id}`);
+       return res.status(200).json({ success: true, message: 'No subscriptions found' });
+    }
+
+    console.log(`🚀 Sending push to ${subs.length} device(s) for user ${user_id}`);
 
     const payload = JSON.stringify({
       title: title || '🐾 Pawverse',
@@ -41,21 +50,23 @@ export default async function handler(req, res) {
     });
 
     const results = await Promise.all(
-      subs.map(s => 
+      subs.map((s, idx) => 
         webpush.sendNotification(s.subscription, payload)
+          .then(() => ({ success: true, idx }))
           .catch(e => {
             if (e.statusCode === 410 || e.statusCode === 404) {
-              // Subscription expired/invalid -> remove it from DB
+              console.log(`⚠️ Removing expired subscription for ${user_id}`);
               return supabaseAdmin.from('push_subscriptions').delete().eq('subscription', s.subscription);
             }
-            console.error('Push send error:', e);
+            console.error(`❌ Push Error [device ${idx}] for ${user_id}:`, e.message || e);
+            return { success: false, error: e.message };
           })
       )
     );
 
     res.status(200).json({ success: true, resultsCount: results.length });
   } catch (err) {
-    console.error('Push API error:', err);
-    res.status(500).json({ error: 'Failed to send push notification' });
+    console.error('❌ Critical Push API error:', err);
+    res.status(500).json({ error: 'Failed to send push notification', details: err.message });
   }
 }
