@@ -15,19 +15,25 @@ export const urlBase64ToUint8Array = (base64String) => {
 
 export const subscribeUserToPush = async (user) => {
   if (!user || typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) {
-    console.error('Push notifications are not supported or user is not logged in');
+    console.warn('ℹ️ Push notifications not supported or user not logged in');
     return false;
   }
   
   try {
+    // Wait for SW to be ready
     const registration = await navigator.serviceWorker.ready;
     
-    // First, try to get existing subscription and unsubscribe to "refresh" it
+    // Give it a tiny bit of time if it just loaded
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    // Force clear any old subscription (important for VAPID key changes)
     const existingSub = await registration.pushManager.getSubscription();
     if (existingSub) {
+      console.log('🔄 Cleaning old push subscription...');
       await existingSub.unsubscribe();
     }
 
+    console.log('📡 Registering new background push...');
     const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
@@ -41,10 +47,14 @@ export const subscribeUserToPush = async (user) => {
     
     if (error) throw error;
     
-    console.log('✅ Push Subscription active and synced to DB');
+    console.log('✅ Phone successfully linked for background alerts!');
     return true;
   } catch (error) {
-    console.error('❌ Push Subscription failed:', error);
+    if (error.name === 'NotAllowedError') {
+      alert('⚠️ Push Blocked: Please enable notification permissions in your browser/phone settings.');
+    } else {
+      console.error('❌ Push Subscription failed:', error);
+    }
     return false;
   }
 };
