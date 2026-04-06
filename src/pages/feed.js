@@ -214,7 +214,16 @@ export default function Feed() {
           const { data:fS } = await supabase.from('friend_requests').select('receiver_id').eq('sender_id',user.id).eq('status','accepted')
           const { data:fR } = await supabase.from('friend_requests').select('sender_id').eq('receiver_id',user.id).eq('status','accepted')
           for (const fid of [...(fS||[]).map(f=>f.receiver_id),...(fR||[]).map(f=>f.sender_id)]) {
-            await supabase.from('notifications').insert({user_id:fid,type:'post',message:`${pet.pet_name} posted a new reel! 🎬|/post/${postData.id}`})
+            await supabase.from('notifications').insert({user_id:fid,type:'post',message:`${pet.pet_name} posted a new reel! 🎬|/post/${data.id}`})
+            fetch('/api/push', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                user_id: fid,
+                title: '🎬 New Reel!',
+                body: `${pet.pet_name} posted a new reel! 🐾`,
+                url: `/post/${data.id}`
+              })
+            }).catch(e => console.error('Push failed:', e))
           }
           playSound('notification')
         }
@@ -233,7 +242,16 @@ export default function Feed() {
           const { data:fS } = await supabase.from('friend_requests').select('receiver_id').eq('sender_id',user.id).eq('status','accepted')
           const { data:fR } = await supabase.from('friend_requests').select('sender_id').eq('receiver_id',user.id).eq('status','accepted')
           for (const fid of [...(fS||[]).map(f=>f.receiver_id),...(fR||[]).map(f=>f.sender_id)]) {
-            await supabase.from('notifications').insert({user_id:fid,type:'post',message:`${pet.pet_name} just posted something new! 🐾|/post/${postData.id}`})
+            await supabase.from('notifications').insert({user_id:fid,type:'post',message:`${pet.pet_name} just posted something new! 🐾|/post/${data.id}`})
+            fetch('/api/push', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                user_id: fid,
+                title: '🐾 New Post!',
+                body: `${pet.pet_name} shared a new post!`,
+                url: `/post/${data.id}`
+              })
+            }).catch(e => console.error('Push failed:', e))
           }
           playSound('notification')
         }

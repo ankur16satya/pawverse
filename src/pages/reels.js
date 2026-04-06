@@ -179,6 +179,24 @@ export default function Reels() {
         // reward coins
         await supabase.from('pets').update({ paw_coins: (pet.paw_coins || 0) + 15 }).eq('id', pet.id)
         setPet(p => ({ ...p, paw_coins: (p.paw_coins || 0) + 15 }))
+
+        // ── NOTIFY FRIENDS ──
+        const { data: fS } = await supabase.from('friend_requests').select('receiver_id').eq('sender_id', user.id).eq('status', 'accepted')
+        const { data: fR } = await supabase.from('friend_requests').select('sender_id').eq('receiver_id', user.id).eq('status', 'accepted')
+        const friendIds = [...(fS || []).map(f => f.receiver_id), ...(fR || []).map(f => f.sender_id)]
+        
+        for (const fid of friendIds) {
+          await supabase.from('notifications').insert({ user_id: fid, type: 'post', message: `${pet.pet_name} posted a new reel! 🎬|/post/${data.id}` })
+          fetch('/api/push', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user_id: fid,
+              title: '🎬 New Reel!',
+              body: `${pet.pet_name} posted a new reel! 🐾`,
+              url: `/post/${data.id}`
+            })
+          }).catch(e => console.error('Push failed:', e))
+        }
       }
     } catch (err) {
       alert('Upload failed: ' + err.message)

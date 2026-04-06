@@ -207,11 +207,18 @@ function VaccineModal({ pet, onClose, onSave, editData }) {
       const ext = file.name.split('.').pop()
       const path = `reports/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
       const { error } = await supabase.storage.from('reports').upload(path, file)
-      if (!error) {
+      if (error) {
+        alert('❌ Upload failed: ' + error.message + '\n\nPlease ensure you have created a public bucket named "reports" in your Supabase storage.')
+        console.error('Storage Upload Error:', error)
+      } else {
         const { data } = supabase.storage.from('reports').getPublicUrl(path)
         set('report_url', data.publicUrl)
+        alert('✅ Report uploaded successfully!')
       }
-    } catch(_) {}
+    } catch(err) {
+      alert('❌ Error processing file: ' + err.message)
+      console.error('File Error:', err)
+    }
     setUploading(false)
   }
 
@@ -553,10 +560,17 @@ function PetHealthDashboard({ pet, user, router, onBack }) {
                 </div>
                 <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:5, flexShrink:0 }}>
                   <span style={{ background:STATUS_BG[status], color:STATUS_COLOR[status], padding:'3px 9px', borderRadius:20, fontSize:'0.67rem', fontWeight:800 }}>{STATUS_LABEL[status]}</span>
-                  <div style={{ display:'flex', gap:4 }}>
-                    {v.report_url && <a href={v.report_url} target="_blank" rel="noreferrer" style={{ background:'#E8F4FF', color:'#3B82F6', borderRadius:7, padding:'3px 8px', fontWeight:700, fontSize:'0.67rem', textDecoration:'none' }}>📄</a>}
-                    <button onClick={()=>{setEditVaccine(v);setShowVaccineModal(true)}} style={{ background:'#F3F0FF', color:'#6C4BF6', border:'none', borderRadius:7, padding:'3px 8px', cursor:'pointer', fontWeight:700, fontSize:'0.67rem' }}>✏️</button>
-                    <button onClick={()=>handleDeleteVaccine(v.id)} style={{ background:'#FFDCE0', color:'#FF4757', border:'none', borderRadius:7, padding:'3px 8px', cursor:'pointer', fontWeight:700, fontSize:'0.67rem' }}>🗑️</button>
+                  <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+                    {v.report_url && (
+                      <a href={v.report_url} target="_blank" rel="noreferrer" 
+                         style={{ background:'#E8F4FF', color:'#3B82F6', borderRadius:8, padding:'4px 10px', fontWeight:800, fontSize:'0.7rem', textDecoration:'none', display:'flex', alignItems:'center', gap:5, border:'1px solid #BFDBFE' }}>
+                        📄 {v.report_url.match(/\.(jpg|jpeg|png|webp)/i) ? (
+                          <img src={v.report_url} style={{ width:18, height:18, borderRadius:4, objectFit:'cover' }} alt="report" />
+                        ) : 'View Report'}
+                      </a>
+                    )}
+                    <button onClick={()=>{setEditVaccine(v);setShowVaccineModal(true)}} style={{ background:'#F3F0FF', color:'#6C4BF6', border:'1px solid #DDD6FE', borderRadius:8, padding:'4px 8px', cursor:'pointer', fontWeight:700, fontSize:'0.72rem' }}>✏️ Edit</button>
+                    <button onClick={()=>handleDeleteVaccine(v.id)} style={{ background:'#FFDCE0', color:'#FF4757', border:'1px solid #FECACA', borderRadius:8, padding:'4px 8px', cursor:'pointer', fontWeight:700, fontSize:'0.72rem' }}>🗑️</button>
                   </div>
                 </div>
               </div>
