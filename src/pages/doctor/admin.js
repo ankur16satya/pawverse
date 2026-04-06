@@ -42,7 +42,7 @@ export default function DoctorDashboard() {
     if (!session) { router.push('/'); return }
     setUser(session.user)
 
-    const { data: petData } = await supabase.from('pets').select('*').eq('user_id', session.user.id).single()
+    const { data: petData } = await supabase.from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).single()
     setPet(petData)
 
     const { data: listingData } = await supabase.from('listings').select('*').eq('user_id', session.user.id).eq('is_service', true).eq('brand', 'Doctor').single()

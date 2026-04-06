@@ -60,6 +60,11 @@ export default function Marketplace() {
 
   useEffect(() => { init() }, [])
 
+  // Auto-select category from URL query e.g. ?category=services
+  useEffect(() => {
+    if (router.query.category) setCategory(router.query.category)
+  }, [router.query.category])
+
   const init = async () => {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { router.push('/'); return }

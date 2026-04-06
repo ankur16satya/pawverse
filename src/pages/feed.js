@@ -53,10 +53,10 @@ export default function Feed() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { router.push('/'); return }
     setUser(session.user)
-    const { data: petData } = await supabase.from('pets').select('*').eq('user_id', session.user.id).single()
+    const { data: petData } = await supabase.from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).single()
     setPet(petData)
     await fetchPosts(session.user.id)
-    const { data: others } = await supabase.from('pets').select('*').neq('user_id', session.user.id).limit(6)
+    const { data: others } = await supabase.from('pets').select('*').neq('user_id', session.user.id).eq('is_health_pet', false).limit(6)
     setSuggestions(others || [])
     const { data: sReqs } = await supabase.from('friend_requests').select('*').eq('sender_id', session.user.id)
     const { data: rReqs } = await supabase.from('friend_requests').select('*').eq('receiver_id', session.user.id)
@@ -65,7 +65,7 @@ export default function Feed() {
     ;(rReqs || []).forEach(r => { statuses[r.sender_id] = r.status })
     setFriendStatuses(statuses)
     const fIds = [...(sReqs||[]).filter(r=>r.status==='accepted').map(r=>r.receiver_id), ...(rReqs||[]).filter(r=>r.status==='accepted').map(r=>r.sender_id)]
-    if (fIds.length > 0) { const { data: fp } = await supabase.from('pets').select('*').in('user_id', fIds); setFriends(fp||[]) }
+    if (fIds.length > 0) { const { data: fp } = await supabase.from('pets').select('*').in('user_id', fIds).eq('is_health_pet', false); setFriends(fp||[]) }
     supabase.channel(`feed-posts-${session.user.id}`)
       .on('postgres_changes', { event:'UPDATE', schema:'public', table:'posts' }, (p) => { const u=p.new; setPosts(prev=>prev.map(x=>x.id===u.id?{...x,likes:u.likes,comments_count:u.comments_count,shares_count:u.shares_count}:x)) })
       .on('postgres_changes', { event:'INSERT', schema:'public', table:'posts' }, (p) => { if(p.new.pet_id!==petData?.id) fetchPosts(session.user.id) })

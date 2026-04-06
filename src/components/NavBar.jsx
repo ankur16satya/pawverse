@@ -60,6 +60,9 @@ export default function NavBar({ user, pet }) {
     initializedRef.current = true
     fetchAll()
     setupRealtime()
+    if ('Notification' in window && Notification.permission === 'default') {
+      console.log('Requesting notification permission')
+    }
     return () => {
       if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null }
       initializedRef.current = false
@@ -116,17 +119,41 @@ export default function NavBar({ user, pet }) {
           playSound('notification')
           setNotifications(prev => [n, ...prev])
           setUnreadCount(prev => prev + 1)
+          if (Notification.permission === 'granted') {
+            new Notification(`🐾 Pawverse: ${notifIcon(n.type)}`, {
+              body: n.message.split('|')[0],
+              icon: '/logo.png'
+            })
+          }
         }
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'friend_requests', filter: `receiver_id=eq.${user.id}` }, (payload) => {
-        if (payload.new.status === 'pending') { setPendingFriendCount(prev => prev + 1); playSound('notification') }
+        if (payload.new.status === 'pending') { 
+          setPendingFriendCount(prev => prev + 1); 
+          playSound('notification') 
+          if (Notification.permission === 'granted') {
+            new Notification('👫 New Friend Request', {
+              body: 'Someone wants to be your friend on Pawverse!',
+              icon: '/logo.png'
+            })
+          }
+        }
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload) => {
         const newMsg = payload.new
         if (newMsg.sender_id === user.id) return
         const { data: conv } = await supabase.from('conversations').select('id').eq('id', newMsg.conversation_id).or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`).single()
         if (!conv) return
-        if (!newMsg.is_read) { setUnreadMsgCount(prev => prev + 1); playSound('message') }
+        if (!newMsg.is_read) { 
+          setUnreadMsgCount(prev => prev + 1); 
+          playSound('message')
+          if (Notification.permission === 'granted') {
+            new Notification('💬 New Message', {
+              body: newMsg.content.substring(0, 50) + (newMsg.content.length > 50 ? '...' : ''),
+              icon: '/logo.png'
+            })
+          }
+        }
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload) => {
         if (!payload.old.is_read && payload.new.is_read && payload.new.sender_id !== user.id) setUnreadMsgCount(prev => Math.max(0, prev - 1))

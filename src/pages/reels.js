@@ -91,7 +91,7 @@ export default function Reels() {
         try { setLikedMap(JSON.parse(saved)) } catch(err){}
       }
       
-      const { data: petData, error: petError } = await supabase.from('pets').select('*').eq('user_id', session.user.id).single()
+      const { data: petData, error: petError } = await supabase.from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).single()
       if (petError) console.error("Pet fetch error:", petError)
       setPet(petData)
       
@@ -109,7 +109,7 @@ export default function Reels() {
       ]
       
       if (friendIds.length > 0) {
-        const { data: friendPets } = await supabase.from('pets').select('*').in('user_id', friendIds)
+        const { data: friendPets } = await supabase.from('pets').select('*').in('user_id', friendIds).eq('is_health_pet', false)
         setFriends(friendPets || [])
       }
     } catch (err) {

@@ -92,7 +92,7 @@ export default function Chat() {
     userRef.current = session.user
 
     const { data: petData } = await supabase
-      .from('pets').select('*').eq('user_id', session.user.id).single()
+      .from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).single()
     setPet(petData)
     petRef.current = petData
 
@@ -211,11 +211,11 @@ export default function Chat() {
 
     const friendList = []
     for (const req of (sent || [])) {
-      const { data: p } = await supabase.from('pets').select('*').eq('user_id', req.receiver_id).single()
+      const { data: p } = await supabase.from('pets').select('*').eq('user_id', req.receiver_id).eq('is_health_pet', false).single()
       if (p) friendList.push(p)
     }
     for (const req of (received || [])) {
-      const { data: p } = await supabase.from('pets').select('*').eq('user_id', req.sender_id).single()
+      const { data: p } = await supabase.from('pets').select('*').eq('user_id', req.sender_id).eq('is_health_pet', false).single()
       if (p) friendList.push(p)
     }
     setFriends(friendList)

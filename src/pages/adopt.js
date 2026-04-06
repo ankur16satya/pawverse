@@ -24,7 +24,7 @@ export default function Adopt() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) { router.push('/'); return }
       setUser(session.user)
-      supabase.from('pets').select('*').eq('user_id', session.user.id).single().then(({ data }) => setPet(data))
+      supabase.from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).single().then(({ data }) => setPet(data))
     })
   }, [])
 

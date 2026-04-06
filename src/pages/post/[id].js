@@ -24,7 +24,7 @@ export default function PostPage() {
     const { data: { session } } = await supabase.auth.getSession()
     if (session) {
       setUser(session.user)
-      const { data: petData } = await supabase.from('pets').select('*').eq('user_id', session.user.id).single()
+      const { data: petData } = await supabase.from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).single()
       setPet(petData)
     }
 

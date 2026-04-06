@@ -24,7 +24,7 @@ export default function Friends() {
     setUser(session.user)
 
     const { data: petData } = await supabase
-      .from('pets').select('*').eq('user_id', session.user.id).single()
+      .from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).single()
     setPet(petData)
 
     await fetchAll(session.user.id)
@@ -60,6 +60,7 @@ export default function Friends() {
         .from('pets')
         .select('*')
         .eq('user_id', req.sender_id)
+        .eq('is_health_pet', false)
         .single()
 
       if (senderPet) {
@@ -90,6 +91,7 @@ export default function Friends() {
         .from('pets')
         .select('*')
         .eq('user_id', req.receiver_id)
+        .eq('is_health_pet', false)
         .single()
 
       if (receiverPet) {
@@ -117,13 +119,13 @@ export default function Friends() {
 
     for (const req of (sent || [])) {
       const { data: friendPet } = await supabase
-        .from('pets').select('*').eq('user_id', req.receiver_id).single()
+        .from('pets').select('*').eq('user_id', req.receiver_id).eq('is_health_pet', false).single()
       if (friendPet) allFriends.push(friendPet)
     }
 
     for (const req of (received || [])) {
       const { data: friendPet } = await supabase
-        .from('pets').select('*').eq('user_id', req.sender_id).single()
+        .from('pets').select('*').eq('user_id', req.sender_id).eq('is_health_pet', false).single()
       if (friendPet) allFriends.push(friendPet)
     }
 
@@ -142,7 +144,7 @@ export default function Friends() {
       ...(receivedReqs || []).map(r => r.sender_id),
     ]
 
-    const { data: allPets } = await supabase.from('pets').select('*').limit(30)
+    const { data: allPets } = await supabase.from('pets').select('*').eq('is_health_pet', false).limit(30)
 
     const filtered = (allPets || []).filter(p => !excludedUserIds.includes(p.user_id))
     setSuggestions(filtered.slice(0, 8))

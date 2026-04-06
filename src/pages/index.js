@@ -84,6 +84,7 @@ export default function Home() {
         paw_coins: 150,
         bio: `Hi, I'm ${petName}! 🐾`,
         location: 'India',
+        is_health_pet: false,
       })
 
       // Even if db insert fails (email not confirmed yet), we saved to localStorage
@@ -104,7 +105,7 @@ export default function Home() {
   const checkNameAvailability = async (name) => {
     if (!name || name.length < 2) { setNameSuggestions([]); return }
     setCheckingName(true)
-    const { data } = await supabase.from('pets').select('owner_name').ilike('owner_name', name)
+    const { data } = await supabase.from('pets').select('owner_name').ilike('owner_name', name).eq('is_health_pet', false)
     const taken = (data || []).some(p => p.owner_name.toLowerCase() === name.toLowerCase())
     if (taken) {
       const num = () => Math.floor(1000 + Math.random() * 9000)
