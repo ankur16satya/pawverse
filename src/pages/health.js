@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
+import { subscribeUserToPush } from '../lib/push'
 import NavBar from '../components/NavBar'
 
 const daysUntil = (d) => {
@@ -713,17 +714,24 @@ export default function Health() {
 
   const requestNotificationPermission = async () => {
     if (!('Notification' in window)) return
-    const permission = await Notification.requestPermission()
-    if (permission === 'granted') {
-      new Notification('🔔 Notifications Enabled!', {
-        body: 'You will now receive vaccine reminders on your phone.',
-        icon: '/logo.png'
-      })
+    
+    try {
+      const permission = await Notification.requestPermission()
+      if (permission === 'granted') {
+        const success = await subscribeUserToPush(user)
+        if (success) {
+          alert('✅ Mobile Notifications Enabled & Refreshed!')
+        } else {
+          alert('⚠️ Notifications enabled but subscription failed. Please try again.')
+        }
+      }
+    } catch (err) {
+      console.error('Permission Request Error:', err)
     }
   }
 
   const checkUpcomingVaccines = async () => {
-    if (!('Notification' in window) || Notification.permission !== 'granted') return
+    if (!user || !('Notification' in window) || Notification.permission !== 'granted') return
     
     // Check all pets for vaccines due in 0-7 days
     for (const pet of pets) {
@@ -806,8 +814,8 @@ export default function Health() {
       <NavBar user={user} pet={pets[0]} />
 
       <div className="health-container" style={{ position: 'relative' }}>
-        {/* Enable Notification Button */}
-        {typeof window !== 'undefined' && 'Notification' in window && Notification.permission !== 'granted' && (
+        {/* Enable / Refresh Notification Button */}
+        {typeof window !== 'undefined' && 'Notification' in window && (
           <button 
             onClick={requestNotificationPermission}
             className="pulse-button"
@@ -819,7 +827,7 @@ export default function Health() {
               boxShadow: '0 8px 24px rgba(108,75,246,0.3)',
               cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8
             }}>
-            🔔 Enable Phone Reminders
+            {Notification.permission === 'granted' ? '🔄 Refresh Mobile Alerts' : '🔔 Enable Phone Reminders'}
           </button>
         )}
 

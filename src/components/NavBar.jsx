@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
+import { subscribeUserToPush } from '../lib/push'
 import {
   Home,
   ShoppingBag,
@@ -15,8 +16,6 @@ import {
 } from "lucide-react"
 // Sound player
 const sounds = {}
-const VAPID_PUBLIC_KEY = 'BMkQXUNaNbEpyVYllsyc4784dZJM2dMwAwoWJCnqBjOsjcu9QFPWWZ60L_wRMw-FZAYdMCZTnooVtth3V5VEzB38';
-
 const playSound = (type) => {
   try {
     const src = type === 'message' ? '/message.mp3' : '/notification.mp3'
@@ -65,10 +64,10 @@ export default function NavBar({ user, pet }) {
     if ('Notification' in window && Notification.permission === 'default') {
       console.log('Requesting notification permission')
       Notification.requestPermission().then(permission => {
-        if (permission === 'granted') subscribeUserToPush()
+        if (permission === 'granted') subscribeUserToPush(user)
       })
     } else if ('Notification' in window && Notification.permission === 'granted') {
-      subscribeUserToPush()
+      subscribeUserToPush(user)
     }
     return () => {
       if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null }
@@ -76,38 +75,6 @@ export default function NavBar({ user, pet }) {
     }
   }, [user?.id])
 
-  const urlBase64ToUint8Array = (base64String) => {
-    const padding = '='.repeat((4 - base64String.length % 4) % 4);
-    const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-    for (let i = 0; i < rawData.length; ++i) {
-      outputArray[i] = rawData.charCodeAt(i);
-    }
-    return outputArray;
-  }
-
-  const subscribeUserToPush = async () => {
-    if (!user || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
-    
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-      });
-      
-      // Save subscription to database
-      await supabase.from('push_subscriptions').upsert({
-        user_id: user.id,
-        subscription: subscription.toJSON()
-      }, { onConflict: 'user_id' });
-      
-      console.log('✅ Push Subscription active');
-    } catch (error) {
-      console.error('❌ Push Subscription failed:', error);
-    }
-  };
 
   useEffect(() => {
     const handleClickOutside = (e) => {
