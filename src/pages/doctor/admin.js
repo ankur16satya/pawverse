@@ -129,6 +129,29 @@ export default function DoctorDashboard() {
       setAppointments(prev => prev.map(a => a.id === appt.id ? { ...a, status } : a))
       showToast(`Booking marked as ${status}`)
 
+      // ── Notify Client via Social Notifications ──
+      try {
+        const { data: petInfo } = await supabase.from('pets').select('user_id').eq('id', appt.pet_id).single()
+        if (petInfo) {
+          await supabase.from('notifications').insert({
+            user_id: petInfo.user_id,
+            type: status === 'confirmed' ? 'friend_accepted' : 'like',
+            message: `${status === 'confirmed' ? '✅' : '❌'} Your appointment with ${form.name} for ${new Date(appt.date).toLocaleDateString()} has been ${status}.|/profile`
+          })
+
+          // ── SEND REAL BACKGROUND PUSH ──
+          await fetch('/api/push', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user_id: petInfo.user_id,
+              title: `🩺 Appointment ${status.toUpperCase()}`,
+              body: `Your visit to ${form.name} for ${new Date(appt.date).toLocaleDateString()} is now ${status}.`,
+              url: '/profile'
+            })
+          }).catch(e => console.error('Push failed:', e))
+        }
+      } catch (e) { console.error('Client Notif Failed:', e) }
+
       await fetch('/api/email', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

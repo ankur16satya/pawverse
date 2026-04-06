@@ -688,6 +688,15 @@ export default function Health() {
   const [showAddPet, setShowAddPet] = useState(false)
   const [loading,    setLoading]    = useState(true)
 
+  const playSound = (type) => {
+    try {
+      const src = type === 'message' ? '/message.mp3' : '/notification.mp3'
+      const audio = new Audio(src)
+      audio.volume = 0.6
+      audio.play().catch(() => {})
+    } catch (e) {}
+  }
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) { router.push('/'); return }
@@ -731,11 +740,24 @@ export default function Health() {
         // Notify daily if within 7 days and not yet done
         if (days >= 0 && days <= 7) {
           const formattedDate = new Date(v.next_due).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+          playSound('notification')
           new Notification(`🩺 Vaccine Reminder: ${pet.pet_name}`, {
             body: `Vaccine Name: ${v.vaccine_name}\nDate: ${formattedDate}\nNote: If already done, please update it in your profile health page at pawversesocial.com`,
             icon: pet.emoji || '/logo.png',
-            tag: `vax_${v.id}_${new Date().toDateString()}` // Unique per day to avoid spamming same notification multiple times in one session
+            vibrate: [200, 100, 200],
+            tag: `vax_${v.id}_${new Date().toDateString()}`
           })
+
+          // ── SEND REAL BACKGROUND PUSH ──
+          fetch('/api/push', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user_id: user.id,
+              title: `🩺 Vaccine Reminder: ${pet.pet_name}`,
+              body: `Vaccine: ${v.vaccine_name} | Date: ${formattedDate}`,
+              url: '/health'
+            })
+          }).catch(e => console.error('Push failed:', e))
         }
       })
     }

@@ -132,6 +132,17 @@ setFriends(friendList)
       user_id: id, type: 'friend_request',
       message: `${pet.pet_name} sent you a friend request! 🐾`,
     })
+
+    // ── SEND REAL BACKGROUND PUSH ──
+    fetch('/api/push', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: id,
+        title: '👫 New Friend Request',
+        body: `${pet.pet_name} wants to be your friend! 🐾`,
+        url: '/friends'
+      })
+    }).catch(e => console.error('Push failed:', e))
   }
 
   const timeAgo = (ts) => {

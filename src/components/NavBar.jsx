@@ -62,12 +62,50 @@ export default function NavBar({ user, pet }) {
     setupRealtime()
     if ('Notification' in window && Notification.permission === 'default') {
       console.log('Requesting notification permission')
+      Notification.requestPermission().then(permission => {
+        if (permission === 'granted') subscribeUserToPush()
+      })
+    } else if ('Notification' in window && Notification.permission === 'granted') {
+      subscribeUserToPush()
     }
     return () => {
       if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null }
       initializedRef.current = false
     }
   }, [user?.id])
+
+  const urlBase64ToUint8Array = (base64String) => {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  }
+
+  const subscribeUserToPush = async () => {
+    if (!user || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      });
+      
+      // Save subscription to database
+      await supabase.from('push_subscriptions').upsert({
+        user_id: user.id,
+        subscription: subscription.toJSON()
+      }, { onConflict: 'user_id' });
+      
+      console.log('✅ Push Subscription active');
+    } catch (error) {
+      console.error('❌ Push Subscription failed:', error);
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -120,9 +158,11 @@ export default function NavBar({ user, pet }) {
           setNotifications(prev => [n, ...prev])
           setUnreadCount(prev => prev + 1)
           if (Notification.permission === 'granted') {
+            playSound('notification')
             new Notification(`🐾 Pawverse: ${notifIcon(n.type)}`, {
               body: n.message.split('|')[0],
-              icon: '/logo.png'
+              icon: '/logo.png',
+              vibrate: [200, 100, 200]
             })
           }
         }
@@ -132,9 +172,11 @@ export default function NavBar({ user, pet }) {
           setPendingFriendCount(prev => prev + 1); 
           playSound('notification') 
           if (Notification.permission === 'granted') {
+            playSound('notification')
             new Notification('👫 New Friend Request', {
               body: 'Someone wants to be your friend on Pawverse!',
-              icon: '/logo.png'
+              icon: '/logo.png',
+              vibrate: [200, 100, 200]
             })
           }
         }
@@ -148,9 +190,11 @@ export default function NavBar({ user, pet }) {
           setUnreadMsgCount(prev => prev + 1); 
           playSound('message')
           if (Notification.permission === 'granted') {
+            playSound('message')
             new Notification('💬 New Message', {
               body: newMsg.content.substring(0, 50) + (newMsg.content.length > 50 ? '...' : ''),
-              icon: '/logo.png'
+              icon: '/logo.png',
+              vibrate: [200, 100, 200]
             })
           }
         }

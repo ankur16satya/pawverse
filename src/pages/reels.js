@@ -58,6 +58,19 @@ export default function Reels() {
       setComments(prev => [...prev, data])
       setCommentText('')
       setReels(prev => prev.map(r => r.id === commentsModal.id ? { ...r, comments_count: (r.comments_count || 0) + 1 } : r))
+
+      // ── SEND REAL BACKGROUND PUSH ──
+      if (commentsModal.pets?.user_id && commentsModal.pets.user_id !== user.id) {
+        fetch('/api/push', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: commentsModal.pets.user_id,
+            title: `🎬 New Reel Comment!`,
+            body: `${pet?.pet_name} commented on your reel: "${commentText.trim().slice(0, 50)}..."`,
+            url: `/post/${commentsModal.id}`
+          })
+        }).catch(e => console.error('Push failed:', e))
+      }
     }
     setSendingComment(false)
   }
@@ -187,6 +200,17 @@ export default function Reels() {
         type: 'like',
         message: `${pet.pet_name} liked your reel! 🎬❤️|/post/${reel.id}`,
       })
+
+      // ── SEND REAL BACKGROUND PUSH ──
+      fetch('/api/push', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: reel.pets.user_id,
+          title: '🎬 Reel Liked!',
+          body: `${pet?.pet_name} liked your reel! ❤️`,
+          url: `/post/${reel.id}`
+        })
+      }).catch(e => console.error('Push failed:', e))
     }
   }
 
@@ -258,6 +282,18 @@ export default function Reels() {
       }),
       is_read: false,
     })
+
+    // ── SEND REAL BACKGROUND PUSH ──
+    fetch('/api/push', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: friend.user_id,
+        title: `🐾 ${pet?.pet_name} shared a reel!`,
+        body: 'Check out this awesome reel shared with you! 🎬',
+        url: '/chat'
+      })
+    }).catch(e => console.error('Push failed:', e))
+
     alert(`✅ Reel shared with ${friend.pet_name}!`)
     setShareToFriendsModal(null)
   }

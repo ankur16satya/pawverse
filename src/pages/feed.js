@@ -120,6 +120,18 @@ export default function Feed() {
     const post = posts.find(p=>p.id===postId)
     if (post?.pets?.user_id&&post.pets.user_id!==user.id) {
       await supabase.from('notifications').insert({user_id:post.pets.user_id,type:'comment',message:`${pet.pet_name} commented: "${text.slice(0,40)}${text.length>40?'...':''}" 💬|/post/${post.id}`})
+      
+      // ── SEND REAL BACKGROUND PUSH ──
+      fetch('/api/push', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: post.pets.user_id,
+          title: '💬 New Comment!',
+          body: `${pet.pet_name} commented on your post: "${text.slice(0,50)}..."`,
+          url: `/post/${post.id}`
+        })
+      }).catch(e => console.error('Push failed:', e))
+      
       playSound('notification')
     }
   }
@@ -134,6 +146,21 @@ export default function Feed() {
     const newLikes=(comment.likes||0)+(comment.likedByMe?-1:1)
     await supabase.from('comments').update({likes:newLikes}).eq('id',comment.id)
     setActiveComments(prev=>({...prev,[postId]:(prev[postId]||[]).map(c=>c.id===comment.id?{...c,likes:newLikes,likedByMe:!c.likedByMe}:c)}))
+
+    if (!comment.likedByMe && comment.pets?.user_id && comment.pets.user_id !== user.id) {
+      await supabase.from('notifications').insert({user_id:comment.pets.user_id,type:'like',message:`${pet.pet_name} liked your comment! ❤️|/post/${postId}`})
+      
+      // ── SEND REAL BACKGROUND PUSH ──
+      fetch('/api/push', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: comment.pets.user_id,
+          title: '❤️ Comment Liked!',
+          body: `${pet.pet_name} liked your comment: "${comment.content.slice(0,40)}..."`,
+          url: `/post/${postId}`
+        })
+      }).catch(e => console.error('Push failed:', e))
+    }
   }
 
   const handleImageSelect = (e) => {
@@ -241,8 +268,20 @@ export default function Feed() {
         return 
     }
     
-    if (!isLiked && post.pets?.user_id && post.pets.user_id !== user.id)
+    if (!isLiked && post.pets?.user_id && post.pets.user_id !== user.id) {
       await supabase.from('notifications').insert({user_id:post.pets.user_id,type:'like',message:`${pet.pet_name} pawed your ${post.type}! ❤️|/post/${post.id}`})
+      
+      // ── SEND REAL BACKGROUND PUSH ──
+      fetch('/api/push', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: post.pets.user_id,
+          title: '🐾 New Paw!',
+          body: `${pet.pet_name} pawed your post! ❤️`,
+          url: `/post/${post.id}`
+        })
+      }).catch(e => console.error('Push failed:', e))
+    }
   }
 
   const handleShare = (post) => {
@@ -280,6 +319,17 @@ export default function Feed() {
       shared_post_preview:JSON.stringify({id:post.id,content:post.content?.slice(0,120)||'',image_url:post.image_url||null,pet_name:post.pets?.pet_name||'',pet_emoji:post.pets?.emoji||'🐾',avatar_url:post.pets?.avatar_url||null,owner_name:post.pets?.owner_name||''}),
     })
     await supabase.from('notifications').insert({user_id:friend.user_id,type:'message',message:`${pet.pet_name} shared a post with you! 🐾|/chat`})
+    
+    // ── SEND REAL BACKGROUND PUSH ──
+    fetch('/api/push', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: friend.user_id,
+        title: `🐾 ${pet?.pet_name} shared a post!`,
+        body: 'Check out this cute post shared with you!',
+        url: '/chat'
+      })
+    }).catch(e => console.error('Push failed:', e))
     alert(`✅ Post shared with ${friend.pet_name}!`)
     setShareToFriendsModal(null)
   }
@@ -312,6 +362,17 @@ export default function Feed() {
     const { error } = await supabase.from('friend_requests').insert({sender_id:user.id,receiver_id:otherPet.user_id,status:'pending'})
     if (error) { setFriendStatuses(prev=>({...prev,[otherPet.user_id]:null})); return }
     await supabase.from('notifications').insert({user_id:otherPet.user_id,type:'friend_request',message:`${pet.pet_name} sent you a friend request! 🐾|/friends`})
+    
+    // ── SEND REAL BACKGROUND PUSH ──
+    fetch('/api/push', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: otherPet.user_id,
+        title: '👫 New Friend Request',
+        body: `${pet.pet_name} wants to be your friend! 🐾`,
+        url: '/friends'
+      })
+    }).catch(e => console.error('Push failed:', e))
   }
 
   const getFriendButtonLabel = (userId) => {

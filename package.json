@@ -11,10 +11,12 @@
     "@supabase/supabase-js": "^2.43.1",
     "lucide-react": "^1.7.0",
     "next": "^14.2.35",
+    "node-fetch": "^2.7.0",
     "nodemailer": "^8.0.4",
     "razorpay": "^2.9.6",
     "react": "^18",
-    "react-dom": "^18"
+    "react-dom": "^18",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "autoprefixer": "^10.0.1",

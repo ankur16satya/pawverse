@@ -70,6 +70,33 @@ export default async function handler(req, res) {
 
     if (error) throw error
 
+    // ── Step 2.5: Notify both USER and DOCTOR via Social Notifications ──
+    try {
+      // Notify DOCTOR
+      const { data: docListing } = await supabaseAdmin.from('listings').select('user_id, name').eq('id', appointmentData.listing_id).single()
+      if (docListing) {
+        await supabaseAdmin.from('notifications').insert({
+          user_id: docListing.user_id,
+          type: 'friend_accepted', // Using an existing icon type
+          message: `🩺 New Appointment! ${appointmentData.client_name} booked ${appointmentData.petName} for ${new Date(appointmentData.date).toLocaleDateString()}.|/doctor/admin`
+        })
+
+        // ── SEND REAL BACKGROUND PUSH ──
+        try {
+          const fetch = require('node-fetch') // Next.js API route context
+          await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/push`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user_id: docListing.user_id,
+              title: '🩺 New Appointment!',
+              body: `${appointmentData.client_name} booked ${appointmentData.petName} for ${new Date(appointmentData.date).toLocaleDateString()}.`,
+              url: '/doctor/admin'
+            })
+          })
+        } catch (e) { console.error('Push Notif Failed:', e) }
+      }
+    } catch (e) { console.error('Social Notif Failed:', e) }
+
     // ── Step 3: Send 3 emails ──
     const { doctorName, doctorEmail, clientEmail, clientName, petName, date, timeSlot, amount } = appointmentData
 

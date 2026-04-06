@@ -344,6 +344,17 @@ export default function Chat() {
         last_message_at: new Date().toISOString()
       }).eq('id', activeConv.id)
 
+      // ── SEND REAL BACKGROUND PUSH ──
+      fetch('/api/push', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: activeFriend.user_id,
+          title: `💬 New Message from ${pet?.pet_name}`,
+          body: newMessage.trim() || '📸 Sent an image',
+          url: '/chat'
+        })
+      }).catch(e => console.error('Push failed:', e))
+
       setNewMessage('')
       setSelectedImage(null)
       setImagePreview(null)
