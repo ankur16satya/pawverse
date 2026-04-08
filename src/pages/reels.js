@@ -181,8 +181,14 @@ export default function Reels() {
         likes: 0,
         views: 0,
       }).select('*, pets(pet_name, emoji, owner_name, avatar_url, user_id)').single()
-
-      if (!error && data) {
+      
+      if (error) {
+        console.error("Supabase reel error:", error)
+        alert(`Failed to save reel: ${error.message}`)
+        return
+      }
+      
+      if (data) {
         setReels(prev => [data, ...prev])
         setCaption('')
         setSelectedVideo(null)
@@ -209,9 +215,11 @@ export default function Reels() {
             })
           }).catch(e => console.error('Push failed:', e))
         }
+        playSound('notification')
       }
     } catch (err) {
-      alert('Upload failed: ' + err.message)
+      console.error('Reel upload error:', err)
+      alert(`Failed to post reel: ${err.message || 'Unknown error'}`)
     }
     setUploading(false)
   }

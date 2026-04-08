@@ -323,7 +323,13 @@ export default function Feed() {
           location:postLocation||null, feeling:postFeeling||null, hashtags:hashtags.length>0?hashtags:null,
           audio_url: postMusic?.url || null, audio_name: postMusic ? JSON.stringify({id: postMusic.id, title: postMusic.title, artist: postMusic.artist, cover: postMusic.cover, start: postMusicStart}) : null
         }).select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id)').single()
-        if (!error&&data) {
+        if (error) {
+          console.error("Supabase post error:", error)
+          alert(`Failed to save post: ${error.message}`)
+          return
+        }
+        
+        if (data) {
           setPosts([data,...posts]); setPostText(''); setPostLocation(''); setPostFeeling(''); setPostMusic(null); removeImage()
           await supabase.from('pets').update({paw_coins:(pet.paw_coins||0)+10}).eq('id',pet.id)
           setPet(p=>({...p,paw_coins:(p.paw_coins||0)+10}))
@@ -344,7 +350,10 @@ export default function Feed() {
           playSound('notification')
         }
       }
-    } catch(err) { alert('Failed to post.') }
+    } catch(err) { 
+      console.error('Final catch error:', err)
+      alert(`Failed to post: ${err.message || 'Unknown error'}`) 
+    }
     setPosting(false)
   }
 
