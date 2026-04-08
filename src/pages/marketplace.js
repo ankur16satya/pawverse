@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
+import { uploadToCloudinary } from '../lib/cloudinary'
 
 const CATEGORIES = [
   { key: 'all',      label: 'All',               icon: '🔮' },
@@ -256,15 +257,10 @@ export default function Marketplace() {
     setSubmitting(true)
 
     try {
-      // Upload all images
+      // Upload all images to Cloudinary
       const imageUrls = []
       for (const img of form.images) {
-        const ext = img.name.split('.').pop()
-        const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-        const { error: upErr } = await supabase.storage
-          .from('listings').upload(fileName, img, { cacheControl: '3600', upsert: false })
-        if (upErr) throw upErr
-        const { data: { publicUrl } } = supabase.storage.from('listings').getPublicUrl(fileName)
+        const publicUrl = await uploadToCloudinary(img, 'listings')
         imageUrls.push(publicUrl)
       }
 

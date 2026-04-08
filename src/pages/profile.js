@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
+import { uploadToCloudinary } from '../lib/cloudinary'
 
 export default function Profile() {
   const router = useRouter()
@@ -93,25 +94,8 @@ export default function Profile() {
     setAvatarUploading(true)
 
     try {
-      // Delete old avatar if exists
-      if (pet.avatar_url) {
-        const oldPath = pet.avatar_url.split('/avatars/')[1]
-        if (oldPath) await supabase.storage.from('avatars').remove([oldPath])
-      }
-
-      // Upload new avatar
-      const ext = file.name.split('.').pop()
-      const fileName = `${user.id}/${Date.now()}.${ext}`
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(fileName, file, { cacheControl: '3600', upsert: true })
-
-      if (uploadError) throw uploadError
-
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(fileName)
+      // Upload new avatar to Cloudinary
+      const publicUrl = await uploadToCloudinary(file, 'avatars')
 
       // Save to pets table
       const { error: updateError } = await supabase

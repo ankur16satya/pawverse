@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
+import { uploadToCloudinary } from '../lib/cloudinary'
 
 export default function Adopt() {
   const router = useRouter()
@@ -151,16 +152,10 @@ export default function Adopt() {
     let uploadedUrls = [];
 
     try {
-      // Upload images
+      // Upload images to Cloudinary
       for (const file of selectedFiles) {
-        const ext = file.name.split('.').pop();
-        const fileName = `${user.id}/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
-        const { error: upErr } = await supabase.storage.from('chat-images').upload(fileName, file, { cacheControl: '3600', upsert: false });
-        
-        if (!upErr) {
-          const { data: { publicUrl } } = supabase.storage.from('chat-images').getPublicUrl(fileName);
-          uploadedUrls.push(publicUrl);
-        }
+        const publicUrl = await uploadToCloudinary(file, 'listings')
+        uploadedUrls.push(publicUrl)
       }
 
       const insertData = {

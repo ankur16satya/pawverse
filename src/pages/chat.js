@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
+import { uploadToCloudinary } from '../lib/cloudinary'
 
 const EMOJIS = ['😀','😂','🥰','😍','🤩','😎','🥳','😢','😭','😤','🤔','😴','🤗','😜','🥺','❤️','🧡','💛','💚','💙','💜','🖤','💕','💞','💓','💗','💖','💝','🎉','🔥','✨','⭐','🌟','💫','🎊','🎈','🎁','🏆','👍','👎','👏','🙌','🤝','🐾','🐶','🐱','🐇','🦜','🐠','🐹','🦴','🐕','🐈','🌸','🌺','🌻','🌹','🍀','🌈','☀️','🌙','⭐','❄️']
 
@@ -316,15 +317,7 @@ export default function Chat() {
       let imageUrl = null
       if (selectedImage) {
         setUploadingImage(true)
-        const ext = selectedImage.name.split('.').pop()
-        const fileName = `${user.id}/${Date.now()}.${ext}`
-        const { error: upErr } = await supabase.storage
-          .from('chat-images')
-          .upload(fileName, selectedImage, { cacheControl: '3600', upsert: false })
-        if (upErr) throw upErr
-        const { data: { publicUrl } } = supabase.storage
-          .from('chat-images').getPublicUrl(fileName)
-        imageUrl = publicUrl
+        imageUrl = await uploadToCloudinary(selectedImage, 'chat-images')
         setUploadingImage(false)
       }
 

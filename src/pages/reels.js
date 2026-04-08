@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
+import { uploadToCloudinary } from '../lib/cloudinary'
 
 export default function Reels() {
   const router = useRouter()
@@ -22,7 +23,7 @@ export default function Reels() {
   const [comments, setComments] = useState([])
   const [commentText, setCommentText] = useState('')
   const [sendingComment, setSendingComment] = useState(false)
-  const [mutedMap, setMutedMap] = useState({})
+  const [isReelsMuted, setIsReelsMuted] = useState(false)
   const [likedMap, setLikedMap] = useState({})
 
   const fetchComments = async (reelId) => {
@@ -75,6 +76,7 @@ export default function Reels() {
     setSendingComment(false)
   }
   const videoRefs = useRef({})
+  const audioRefs = useRef({})
   const fileInputRef = useRef(null)
   const containerRef = useRef(null)
 
@@ -84,13 +86,26 @@ export default function Reels() {
     // Auto-play reel in view, pause others
     Object.entries(videoRefs.current).forEach(([idx, vid]) => {
       if (!vid) return
+      const aud = audioRefs.current[idx]
       if (parseInt(idx) === activeReel) {
-        vid.play().catch(() => {})
+        vid.play().catch(() => {
+          setIsReelsMuted(true)
+          vid.muted = true
+          vid.play().catch(()=>{})
+        })
+        if (aud) {
+          aud.play().catch(() => {
+            setIsReelsMuted(true)
+            aud.muted = true
+            aud.play().catch(()=>{})
+          })
+        }
       } else {
         vid.pause()
+        if (aud) aud.pause()
       }
     })
-  }, [activeReel, reels])
+  }, [activeReel, reels, isReelsMuted])
 
   const init = async () => {
     try {
@@ -154,13 +169,7 @@ export default function Reels() {
     if (!selectedVideo || !pet) return
     setUploading(true)
     try {
-      const ext = selectedVideo.name.split('.').pop()
-      const fileName = `${user.id}/${Date.now()}.${ext}`
-      const { error: uploadErr } = await supabase.storage
-        .from('reels').upload(fileName, selectedVideo, { cacheControl: '3600', upsert: false })
-      if (uploadErr) throw uploadErr
-
-      const { data: { publicUrl } } = supabase.storage.from('reels').getPublicUrl(fileName)
+      const publicUrl = await uploadToCloudinary(selectedVideo, 'reels')
 
       const { data, error } = await supabase.from('reels').insert({
         pet_id: pet.id,
@@ -232,10 +241,8 @@ export default function Reels() {
     }
   }
 
-  const toggleMute = (idx) => {
-    setMutedMap(prev => ({ ...prev, [idx]: !prev[idx] }))
-    const vid = videoRefs.current[idx]
-    if (vid) vid.muted = !vid.muted
+  const toggleMute = () => {
+    setIsReelsMuted(!isReelsMuted)
   }
 
   const handleScroll = () => {
@@ -360,16 +367,53 @@ export default function Reels() {
                 src={reel.video_url}
                 loop
                 playsInline
-                muted={mutedMap[idx] !== false}
+                muted={reel.audio_url ? true : isReelsMuted}
                 onClick={() => {
                   const vid = videoRefs.current[idx]
-                  if (vid) vid.paused ? vid.play() : vid.pause()
+                  const aud = audioRefs.current[idx]
+                  if (vid) {
+                    if (vid.paused) {
+                      vid.play()
+                      if (aud) aud.play()
+                    } else {
+                      vid.pause()
+                      if (aud) aud.pause()
+                    }
+                  }
                 }}
                 style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'pointer' }}
               />
 
+              {/* Audio Overlay (if music added) */}
+              {reel.audio_url && (() => {
+                let startT = 0
+                try { startT = JSON.parse(reel.audio_name).start || 0 } catch(e){}
+                return (
+                  <audio 
+                    ref={el => audioRefs.current[idx] = el}
+                    src={reel.audio_url + '#t=' + startT}
+                    loop
+                    muted={isReelsMuted}
+                  />
+                )
+              })()}
+
               {/* Gradient overlay */}
               <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 50%, rgba(0,0,0,0.2) 100%)', pointerEvents: 'none' }} />
+
+              {/* Music Title (if music added) */}
+              {reel.audio_url && (() => {
+                let disp = 'Original Audio'
+                try { 
+                  const m = JSON.parse(reel.audio_name)
+                  disp = m.title + ' · ' + m.artist
+                } catch(e) { disp = reel.audio_name || 'PawVerse Audio' }
+                return (
+                  <div style={{ position: 'absolute', top: 20, right: 16, background: 'rgba(0,0,0,0.4)', padding: '6px 12px', borderRadius: 20, color: '#fff', fontSize: '0.75rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6, backdropFilter: 'blur(4px)' }}>
+                    🎵 <span style={{ maxWidth: 100, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{disp}</span>
+                  </div>
+                )
+              })()}
 
               {/* Pet info — bottom left */}
               <div style={{ position: 'absolute', bottom: 24, left: 16, right: 80, color: '#fff' }}>
@@ -420,8 +464,8 @@ export default function Reels() {
                 </div>
 
                 {/* Mute */}
-                <button onClick={() => toggleMute(idx)} style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', border: 'none', borderRadius: '50%', width: 48, height: 48, fontSize: '1.3rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {mutedMap[idx] !== false ? '🔇' : '🔊'}
+                <button onClick={toggleMute} style={{ background: isReelsMuted ? 'rgba(255,107,53,0.8)' : 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', border: 'none', borderRadius: '50%', width: 48, height: 48, fontSize: '1.3rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {isReelsMuted ? '🔇' : '🔊'}
                 </button>
               </div>
             </div>

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
 import NavBar from '../../components/NavBar'
-
+import { uploadToCloudinary } from '../../lib/cloudinary'
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const TIME_SLOTS = []
 for (let h = 8; h <= 20; h++) {
@@ -88,12 +88,7 @@ export default function DoctorDashboard() {
       let publicImageUrl = form.existing_image_url
       if (form.images.length > 0) {
         const img = form.images[0]
-        const ext = img.name.split('.').pop()
-        const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-        const { error: upErr } = await supabase.storage.from('listings').upload(fileName, img, { cacheControl: '3600', upsert: false })
-        if (upErr) throw upErr
-        const { data: { publicUrl } } = supabase.storage.from('listings').getPublicUrl(fileName)
-        publicImageUrl = publicUrl
+        publicImageUrl = await uploadToCloudinary(img, 'listings')
       }
 
       const payload = {

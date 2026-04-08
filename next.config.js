@@ -3,6 +3,7 @@ const nextConfig = {
   reactStrictMode: true,
   images: {
     domains: ['dhqeqowrtyuthjustclr.supabase.co', 'res.cloudinary.com'],
+    formats: ['image/avif', 'image/webp'],
   },
 }
 module.exports = nextConfig

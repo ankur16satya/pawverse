@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import { subscribeUserToPush } from '../lib/push'
 import NavBar from '../components/NavBar'
+import { uploadToCloudinary } from '../lib/cloudinary'
 
 const daysUntil = (d) => {
   if (!d) return 0
@@ -204,17 +205,9 @@ function VaccineModal({ pet, onClose, onSave, editData }) {
     if (!file) return
     setUploading(true)
     try {
-      const ext = file.name.split('.').pop()
-      const path = `reports/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-      const { error } = await supabase.storage.from('reports').upload(path, file)
-      if (error) {
-        alert('❌ Upload failed: ' + error.message + '\n\nPlease ensure you have created a public bucket named "reports" in your Supabase storage.')
-        console.error('Storage Upload Error:', error)
-      } else {
-        const { data } = supabase.storage.from('reports').getPublicUrl(path)
-        set('report_url', data.publicUrl)
-        alert('✅ Report uploaded successfully!')
-      }
+      const publicUrl = await uploadToCloudinary(file, 'reports')
+      set('report_url', publicUrl)
+      alert('✅ Report uploaded successfully!')
     } catch(err) {
       alert('❌ Error processing file: ' + err.message)
       console.error('File Error:', err)

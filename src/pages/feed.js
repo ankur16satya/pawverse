@@ -2,9 +2,11 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
+import { uploadToCloudinary } from '../lib/cloudinary'
 
 const FEELINGS = ['😀 Happy','😍 Loved','🥳 Excited','😎 Cool','😢 Sad','😤 Annoyed','🤔 Thoughtful','🥺 Grateful','🔥 Hyped','😴 Tired','🤒 Sick','🥰 Blessed']
 const POPULAR_LOCATIONS = ['Mumbai, India','Delhi, India','Bengaluru, India','Chennai, India','Hyderabad, India','Pune, India','Kolkata, India','Jaipur, India','Dehradun, India','Chandigarh, India']
+
 
 export default function Feed() {
   const router = useRouter()
@@ -27,9 +29,19 @@ export default function Feed() {
   const [postFeeling, setPostFeeling] = useState('')
   const [showLocationPicker, setShowLocationPicker] = useState(false)
   const [showFeelingPicker, setShowFeelingPicker] = useState(false)
+  const [showMusicPicker, setShowMusicPicker] = useState(false)
+  const [postMusic, setPostMusic] = useState(null)
+  const [musicSearchQuery, setMusicSearchQuery] = useState('')
+  const [musicResults, setMusicResults] = useState([])
+  const [isSearchingMusic, setIsSearchingMusic] = useState(false)
+  const [playingTrackId, setPlayingTrackId] = useState(null)
+  const [previewAudio, setPreviewAudio] = useState(null)
+  const [postMusicStart, setPostMusicStart] = useState(0)
   const [locationSearch, setLocationSearch] = useState('')
   const [lightboxImg, setLightboxImg] = useState(null)
   const [activeComments, setActiveComments] = useState({})
+  const [isFeedMuted, setIsFeedMuted] = useState(false)
+  const [activeFeedPostId, setActiveFeedPostId] = useState(null)
   const [commentTexts, setCommentTexts] = useState({})
   const [replyTo, setReplyTo] = useState({})
   const [openMenu, setOpenMenu] = useState(null)
@@ -39,6 +51,9 @@ export default function Feed() {
   const videoInputRef = useRef(null)
   const menuRef = useRef(null)
   const textareaRef = useRef(null)
+  const feedAudioRefs = useRef({})
+  const feedVideoRefs = useRef({})
+  const feedObserver = useRef(null)
 
   useEffect(() => { init() }, [])
   useEffect(() => {
@@ -48,6 +63,83 @@ export default function Feed() {
   }, [])
 
   const playSound = (type) => { try { const a = new Audio(type === 'message' ? '/message.mp3' : '/notification.mp3'); a.volume = 0.5; a.play().catch(() => {}) } catch(e){} }
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (musicSearchQuery.trim()) {
+        setIsSearchingMusic(true)
+        fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(musicSearchQuery)}&entity=song&limit=10`)
+          .then(r=>r.json())
+          .then(d=>{
+            setMusicResults(d.results.map(r=>({
+              id: r.trackId, title: r.trackName, artist: r.artistName, url: r.previewUrl, cover: r.artworkUrl100
+            })))
+            setIsSearchingMusic(false)
+          }).catch(()=>setIsSearchingMusic(false))
+      } else {
+        setMusicResults([])
+      }
+    }, 600)
+    return () => clearTimeout(t)
+  }, [musicSearchQuery])
+
+  useEffect(() => { return () => { if (previewAudio) previewAudio.pause() } }, [previewAudio])
+
+  const togglePreviewAudio = (e, track) => {
+    e.stopPropagation();
+    if (playingTrackId === track.id) {
+      if (previewAudio) previewAudio.pause()
+      setPlayingTrackId(null)
+    } else {
+      if (previewAudio) previewAudio.pause()
+      const a = new Audio(track.url)
+      a.play()
+      setPreviewAudio(a)
+      setPlayingTrackId(track.id)
+    }
+  }
+
+  useEffect(() => {
+    feedObserver.current = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          setActiveFeedPostId(entry.target.getAttribute('data-post-id'))
+        }
+      })
+    }, { threshold: 0.6 })
+    return () => { if (feedObserver.current) feedObserver.current.disconnect() }
+  }, [])
+
+  useEffect(() => {
+    Object.entries(feedAudioRefs.current).forEach(([id, aud]) => {
+      if (!aud) return
+      if (id === activeFeedPostId && !isFeedMuted) {
+        aud.play().catch(() => {
+          setIsFeedMuted(true)
+          aud.muted = true
+          aud.play().catch(()=>{})
+        })
+      } else {
+        aud.pause()
+      }
+    })
+    Object.entries(feedVideoRefs.current).forEach(([id, vid]) => {
+      if (!vid) return
+      if (id === activeFeedPostId) {
+        vid.play().catch(() => {
+          setIsFeedMuted(true)
+          vid.muted = true
+          vid.play().catch(()=>{})
+        })
+      } else {
+        vid.pause()
+      }
+    })
+  }, [activeFeedPostId, posts, isFeedMuted])
+
+  const toggleFeedPostAudio = () => {
+    setIsFeedMuted(!isFeedMuted)
+  }
 
   const init = async () => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -180,12 +272,8 @@ export default function Feed() {
 
   const removeImage = () => { setSelectedImage(null); setSelectedVideo(null); setImagePreview(null); if(fileInputRef.current) fileInputRef.current.value=''; if(videoInputRef.current) videoInputRef.current.value=''; }
 
-  const uploadImage = async (file,userId) => {
-    const ext=file.name.split('.').pop()
-    const fileName=`${userId}/${Date.now()}.${ext}`
-    const { error } = await supabase.storage.from('post-images').upload(fileName,file,{cacheControl:'3600',upsert:false})
-    if (error) throw error
-    const { data:{publicUrl} } = supabase.storage.from('post-images').getPublicUrl(fileName)
+  const uploadImage = async (file, userId) => {
+    const publicUrl = await uploadToCloudinary(file, 'post-images')
     return publicUrl
   }
 
@@ -195,20 +283,17 @@ export default function Feed() {
     try {
       if (selectedVideo) {
         setUploadingImage(true)
-        const ext = selectedVideo.name.split('.').pop()
-        const fileName = `${user.id}/${Date.now()}.${ext}`
-        const { error: uploadErr } = await supabase.storage.from('reels').upload(fileName, selectedVideo, { cacheControl: '3600', upsert: false })
-        if (uploadErr) throw uploadErr
-        const { data: { publicUrl } } = supabase.storage.from('reels').getPublicUrl(fileName)
+        const publicUrl = await uploadToCloudinary(selectedVideo, 'reels')
         setUploadingImage(false)
 
         const hashtags=(postText.match(/#[\w]+/g)||[]).map(h=>h.toLowerCase())
         const { data, error } = await supabase.from('reels').insert({
-          pet_id:pet.id, video_url:publicUrl, caption:postText, likes:0, views:0
+          pet_id:pet.id, video_url:publicUrl, caption:postText, likes:0, views:0,
+          audio_url: postMusic?.url || null, audio_name: postMusic ? JSON.stringify({id: postMusic.id, title: postMusic.title, artist: postMusic.artist, cover: postMusic.cover, start: postMusicStart}) : null
         }).select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id)').single()
         
         if (!error&&data) {
-          setPosts([data,...posts]); setPostText(''); setPostLocation(''); setPostFeeling(''); removeImage()
+          setPosts([data,...posts]); setPostText(''); setPostLocation(''); setPostFeeling(''); setPostMusic(null); removeImage()
           await supabase.from('pets').update({paw_coins:(pet.paw_coins||0)+15}).eq('id',pet.id)
           setPet(p=>({...p,paw_coins:(p.paw_coins||0)+15}))
           const { data:fS } = await supabase.from('friend_requests').select('receiver_id').eq('sender_id',user.id).eq('status','accepted')
@@ -234,9 +319,10 @@ export default function Feed() {
         const { data, error } = await supabase.from('posts').insert({
           pet_id:pet.id, content:postText, image_url:imageUrl, hidden:false, edited:false,
           location:postLocation||null, feeling:postFeeling||null, hashtags:hashtags.length>0?hashtags:null,
+          audio_url: postMusic?.url || null, audio_name: postMusic ? JSON.stringify({id: postMusic.id, title: postMusic.title, artist: postMusic.artist, cover: postMusic.cover, start: postMusicStart}) : null
         }).select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id)').single()
         if (!error&&data) {
-          setPosts([data,...posts]); setPostText(''); setPostLocation(''); setPostFeeling(''); removeImage()
+          setPosts([data,...posts]); setPostText(''); setPostLocation(''); setPostFeeling(''); setPostMusic(null); removeImage()
           await supabase.from('pets').update({paw_coins:(pet.paw_coins||0)+10}).eq('id',pet.id)
           setPet(p=>({...p,paw_coins:(p.paw_coins||0)+10}))
           const { data:fS } = await supabase.from('friend_requests').select('receiver_id').eq('sender_id',user.id).eq('status','accepted')
@@ -522,10 +608,17 @@ export default function Feed() {
               </button>
               
               <button 
-                onClick={()=>{setShowFeelingPicker(p=>!p);setShowLocationPicker(false)}}
+                onClick={()=>{setShowFeelingPicker(p=>!p);setShowLocationPicker(false);setShowMusicPicker(false)}}
                 style={{ flex: 1, minWidth: '55px', padding: '12px 4px', borderRadius: '14px', background: postFeeling ? '#FFF0E8' : '#F3F0FF', color: postFeeling ? '#FF6B35' : '#6C4BF6', fontWeight: 700, fontSize: '0.82rem', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', cursor: 'pointer', transition: 'all 0.2s', fontFamily: 'Nunito, sans-serif' }}>
                 <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>😊</span>
                 {postFeeling?'Added ✓':'Feeling'}
+              </button>
+
+              <button 
+                onClick={()=>{setShowMusicPicker(p=>!p);setShowLocationPicker(false);setShowFeelingPicker(false)}}
+                style={{ flex: 1, minWidth: '55px', padding: '12px 4px', borderRadius: '14px', background: postMusic ? '#F0EBFF' : '#F3F0FF', color: postMusic ? '#5b21b6' : '#6C4BF6', fontWeight: 700, fontSize: '0.82rem', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', cursor: 'pointer', transition: 'all 0.2s', fontFamily: 'Nunito, sans-serif' }}>
+                <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>🎵</span>
+                {postMusic?'Added ✓':'Music'}
               </button>
               
               <button 
@@ -565,6 +658,47 @@ export default function Feed() {
               </div>
             )}
 
+            {showMusicPicker && (
+              <div className="feed-picker" style={{background:'#FFF'}}>
+                <div className="feed-picker-title" style={{color:'#1E1347'}}>🎵 Add Music</div>
+                <input 
+                  autoFocus
+                  placeholder="Search songs, artists..." 
+                  value={musicSearchQuery} 
+                  onChange={e=>setMusicSearchQuery(e.target.value)}
+                  style={{width:'100%', padding:'10px 14px', borderRadius:12, border:'1px solid #E5E7EB', marginBottom:12, fontFamily:'Nunito, sans-serif', boxSizing:'border-box', outline:'none'}}
+                />
+                {isSearchingMusic && <div style={{fontSize:'0.82rem', color:'#6B7280', textAlign:'center', padding:10}}>Searching...</div>}
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflowY:'auto' }}>
+                  {!isSearchingMusic && musicResults.map(song => (
+                    <div key={song.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px', background:'#F9FAFB', borderRadius:10, cursor:'pointer', border: postMusic?.id === song.id ? '2px solid #6C4BF6' : '1px solid transparent' }} onClick={()=>{setPostMusic(song); setPostMusicStart(0)}}>
+                      <div style={{ display:'flex', alignItems:'center', gap:10, overflow:'hidden' }}>
+                        <img src={song.cover} style={{width:40, height:40, borderRadius:8, objectFit:'cover'}} />
+                        <div style={{minWidth:0}}>
+                          <div style={{ fontWeight:800, fontSize:'0.85rem', color:'#1E1347', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{song.title}</div>
+                          <div style={{ fontSize:'0.75rem', color:'#6B7280', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{song.artist}</div>
+                        </div>
+                      </div>
+                      <button style={{ background:'none', border:'none', fontSize:'1.4rem', cursor:'pointer', padding:5 }} onClick={(e)=>togglePreviewAudio(e, song)}>
+                        {playingTrackId === song.id ? '⏸️' : '▶️'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {postMusic&& (
+                  <div style={{marginTop:16, borderTop:'1px solid #E5E7EB', paddingTop:12}}>
+                    <div style={{fontSize:'0.82rem', fontWeight:700, color:'#374151', marginBottom:8}}>Select Start Time: <span style={{color:'#6C4BF6'}}>{postMusicStart}s</span></div>
+                    <input type="range" min="0" max="30" value={postMusicStart} onChange={e=>setPostMusicStart(parseInt(e.target.value))} style={{width:'100%', accentColor:'#6C4BF6'}} />
+                    <div style={{display:'flex', justifyContent:'space-between', fontSize:'0.7rem', color:'#9CA3AF'}}><span>0s</span><span>30s Max</span></div>
+                    <button style={{width:'100%', padding:'10px', background:'#F3F0FF', color:'#6C4BF6', border:'none', borderRadius:10, fontWeight:700, marginTop:10, cursor:'pointer'}} onClick={()=>{setPostMusic(null); setShowMusicPicker(false)}}>✕ Remove Track</button>
+                    <button style={{width:'100%', padding:'10px', background:'linear-gradient(135deg, #FF6B35, #6C4BF6)', color:'#fff', border:'none', borderRadius:10, fontWeight:800, marginTop:6, cursor:'pointer'}} onClick={()=>setShowMusicPicker(false)}>✓ Done</button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {(postLocation||postFeeling)&&(
               <div className="feed-selected-tags">
                 {postLocation&&<span className="feed-tag-loc">📍 {postLocation}</span>}
@@ -586,7 +720,7 @@ export default function Feed() {
             const isMyPost=post.pets?.user_id===user?.id
             const comments=activeComments[post.id]
             return (
-              <div key={post.id} className="card feed-post fade-up">
+              <div key={post.id} data-post-id={post.id} className="card feed-post fade-up" ref={el => { if (el && feedObserver.current) feedObserver.current.observe(el) }}>
 
                 <div className="feed-post-header">
                   <div className={`feed-post-avatar${!isMyPost?' clickable':''}`} onClick={()=>!isMyPost&&router.push(`/user/${post.pets?.user_id}`)}>
@@ -600,6 +734,26 @@ export default function Feed() {
                       by {post.pets?.owner_name} · {timeAgo(post.created_at)}
                       {post.edited&&<span className="feed-edited"> (edited)</span>}
                     </div>
+                    {post.audio_name ? (() => {
+                       try {
+                         const m = JSON.parse(post.audio_name);
+                         return (
+                           <div onClick={toggleFeedPostAudio} style={{cursor:'pointer', fontSize:'0.75rem', fontWeight:800, color:'#6C4BF6', display:'inline-flex', alignItems:'center', gap:6, marginTop:4, padding:'4px 10px', background: !isFeedMuted ? '#E8E2FF' : '#F5F3FF', borderRadius:14, transition:'0.2s', border:'1px solid #E0D5FF', userSelect:'none'}}>
+                             {!isFeedMuted && activeFeedPostId === post.id ? '🔊' : '🔇'} {m.title} · {m.artist}
+                           </div>
+                         )
+                       } catch(e) { 
+                         return (
+                           <div onClick={toggleFeedPostAudio} style={{cursor:'pointer', fontSize:'0.75rem', fontWeight:800, color:'#6C4BF6', display:'inline-flex', alignItems:'center', gap:6, marginTop:4, padding:'4px 10px', background: !isFeedMuted ? '#E8E2FF' : '#F5F3FF', borderRadius:14, transition:'0.2s', border:'1px solid #E0D5FF', userSelect:'none'}}>
+                             {!isFeedMuted && activeFeedPostId === post.id ? '🔊' : '🔇'} {post.audio_name}
+                           </div>
+                         ) 
+                       }
+                    })() : post.video_url && (
+                       <div onClick={toggleFeedPostAudio} style={{cursor:'pointer', fontSize:'0.75rem', fontWeight:800, color:'#6B7280', display:'inline-flex', alignItems:'center', gap:6, marginTop:4, padding:'4px 10px', background: '#F9FAFB', borderRadius:14, transition:'0.2s', border:'1px solid #E5E7EB', userSelect:'none'}}>
+                         {!isFeedMuted && activeFeedPostId === post.id ? '🔊' : '🔇'} Original Audio
+                       </div>
+                    )}
                   </div>
                   <div className="feed-menu-wrap" ref={openMenu===post.id?menuRef:null}>
                     <span className="feed-menu-trigger" onClick={()=>setOpenMenu(openMenu===post.id?null:post.id)}>···</span>
@@ -658,9 +812,18 @@ export default function Feed() {
 
                 {post.video_url&&(
                   <div className="feed-post-video-wrap">
-                    <video src={post.video_url} autoPlay muted loop playsInline controls className="feed-post-video" />
+                    <video ref={el => feedVideoRefs.current[post.id] = el} src={post.video_url} muted={post.audio_url ? true : isFeedMuted} loop playsInline controls={false} className="feed-post-video" />
                   </div>
                 )}
+
+                {post.audio_url && (() => {
+                  try {
+                    const m = JSON.parse(post.audio_name);
+                    return <audio ref={el => feedAudioRefs.current[post.id] = el} src={post.audio_url + '#t=' + (m.start||0)} loop />
+                  } catch(e) {
+                    return <audio ref={el => feedAudioRefs.current[post.id] = el} src={post.audio_url} loop />
+                  }
+                })()}
 
                 <div className="feed-post-stats">
                   <span>❤️ {post.likes||0} paws</span>
