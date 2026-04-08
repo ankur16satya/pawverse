@@ -31,8 +31,8 @@ export default function UserProfile() {
     if (session.user.id === id) { router.push('/profile'); return }
 
     const { data: myPet } = await supabase
-      .from('pets').select('*').eq('user_id', session.user.id).single()
-    setPet(myPet)
+      .from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).maybeSingle()
+    if (myPet) setPet(myPet)
 
     // Get profile pet
     const { data: profilePetData } = await supabase
@@ -123,14 +123,42 @@ setFriends(friendList)
   }
 
   const handleAddFriend = async () => {
-    if (!pet || !profilePet) return
+    if (!user || !profilePet) return
+    let currentPet = pet
+    if (!currentPet) {
+      const { data: pD } = await supabase.from('pets').select('*').eq('user_id', user.id).eq('is_health_pet', false).maybeSingle()
+      if (pD) {
+        currentPet = pD
+        setPet(pD)
+      } else {
+        return // Still no pet, can't add friend safely
+      }
+    }
+
+    
+    if (friendStatus === 'received') {
+      // Accept the request
+      setFriendStatus('friends')
+      const { data: req } = await supabase.from('friend_requests').select('id').eq('sender_id', id).eq('receiver_id', user.id).single()
+      if (req) {
+        await supabase.from('friend_requests').update({ status: 'accepted' }).eq('id', req.id)
+        const petName = currentPet?.pet_name || 'A pet'
+        await supabase.from('notifications').insert({
+          user_id: id, type: 'friend_accepted',
+          message: `${petName} accepted your friend request! 🎉`,
+        })
+      }
+      return
+    }
+
     setFriendStatus('sent')
     await supabase.from('friend_requests').insert({
       sender_id: user.id, receiver_id: id, status: 'pending'
     })
+    const petName = currentPet?.pet_name || 'A pet'
     await supabase.from('notifications').insert({
       user_id: id, type: 'friend_request',
-      message: `${pet.pet_name} sent you a friend request! 🐾`,
+      message: `${petName} sent you a friend request! 🐾|/friends`,
     })
 
     // ── SEND REAL BACKGROUND PUSH ──

@@ -210,7 +210,64 @@ export default function NavBar({ user, pet }) {
 
       setSearchResults(merged)
       setSearching(false)
+      
+      // Also fetch friend statuses for search results
+      if (merged.length > 0) {
+        const ids = merged.map(p => p.user_id)
+        const { data: sReqs } = await supabase.from('friend_requests').select('*').eq('sender_id', user.id).in('receiver_id', ids)
+        const { data: rReqs } = await supabase.from('friend_requests').select('*').eq('receiver_id', user.id).in('sender_id', ids)
+        
+        const statuses = {}
+        ;(sReqs || []).forEach(r => { statuses[r.receiver_id] = r.status })
+        ;(rReqs || []).forEach(r => { statuses[r.sender_id] = r.status === 'accepted' ? 'accepted' : 'received' })
+        setFriendStatuses(statuses)
+      }
     }, 300)
+  }
+
+  const [friendStatuses, setFriendStatuses] = useState({})
+  
+  const handleAddFriendFromSearch = async (e, targetUserId, targetPetName) => {
+    e.stopPropagation()
+    if (!user || !pet || friendStatuses[targetUserId]) return
+    
+    setFriendStatuses(prev => ({ ...prev, [targetUserId]: 'pending' }))
+    
+    const { error } = await supabase.from('friend_requests').insert({
+      sender_id: user.id,
+      receiver_id: targetUserId,
+      status: 'pending'
+    })
+    
+    if (error) {
+      setFriendStatuses(prev => ({ ...prev, [targetUserId]: null }))
+      return
+    }
+    
+    await supabase.from('notifications').insert({
+      user_id: targetUserId,
+      type: 'friend_request',
+      message: `${pet.pet_name} sent you a friend request! 🐾|/friends`,
+    })
+    
+    // Send push
+    fetch('/api/push', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: targetUserId,
+        title: '👫 New Friend Request',
+        body: `${pet.pet_name} wants to be your friend! 🐾`,
+        url: '/friends'
+      })
+    }).catch(e => console.error('Push failed:', e))
+  }
+
+  const getFriendBtnLabel = (userId) => {
+    const s = friendStatuses[userId]
+    if (s === 'accepted') return 'Friends ✅'
+    if (s === 'pending') return 'Sent 🐾'
+    if (s === 'received') return 'Accept'
+    return '+ Add'
   }
 
   const handleBellClick = async () => {
@@ -334,7 +391,26 @@ export default function NavBar({ user, pet }) {
                         <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#1E1347', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.owner_name}</div>
                         <div style={{ fontSize: '0.7rem', color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.pet_name} · {p.pet_breed || 'Pet'}</div>
                       </div>
-                      {p.user_id === user?.id && <span style={{ fontSize: '0.65rem', background: '#F0EBFF', color: '#6C4BF6', padding: '2px 7px', borderRadius: 20, fontWeight: 700, flexShrink: 0 }}>You</span>}
+                      {p.user_id === user?.id ? (
+                        <span style={{ fontSize: '0.65rem', background: '#F0EBFF', color: '#6C4BF6', padding: '2px 7px', borderRadius: 20, fontWeight: 700, flexShrink: 0 }}>You</span>
+                      ) : (
+                        <button 
+                          onClick={(e) => handleAddFriendFromSearch(e, p.user_id, p.pet_name)}
+                          disabled={friendStatuses[p.user_id] === 'accepted' || friendStatuses[p.user_id] === 'pending'}
+                          style={{ 
+                            fontSize: '0.65rem', 
+                            background: (friendStatuses[p.user_id] === 'accepted' || friendStatuses[p.user_id] === 'pending') ? '#F3F0FF' : 'linear-gradient(135deg, #FF6B35, #6C4BF6)', 
+                            color: (friendStatuses[p.user_id] === 'accepted' || friendStatuses[p.user_id] === 'pending') ? '#6C4BF6' : '#fff', 
+                            padding: '4px 10px', 
+                            borderRadius: 10, 
+                            fontWeight: 800, 
+                            flexShrink: 0,
+                            border: 'none',
+                            cursor: (friendStatuses[p.user_id] === 'accepted' || friendStatuses[p.user_id] === 'pending') ? 'default' : 'pointer'
+                          }}>
+                          {getFriendBtnLabel(p.user_id)}
+                        </button>
+                      )}
                     </div>
                   ))}
                 </>

@@ -145,8 +145,10 @@ export default function Feed() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { router.push('/'); return }
     setUser(session.user)
-    const { data: petData } = await supabase.from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).single()
-    setPet(petData)
+    const { data: petData } = await supabase.from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).maybeSingle()
+    if (petData) {
+      setPet(petData)
+    }
     await fetchPosts(session.user.id)
     const { data: others } = await supabase.from('pets').select('*').neq('user_id', session.user.id).eq('is_health_pet', false).limit(6)
     setSuggestions(others || [])
@@ -176,7 +178,7 @@ export default function Feed() {
     const mixed = [...pD_typed,...rD_typed].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,20)
     const hidden = JSON.parse(localStorage.getItem('hidden_posts')||'[]')
     
-    const savedLikes = JSON.parse(localStorage.getItem(`pawverse_feed_likes_${currentUserId}`) || '{}')
+    const savedLikes = JSON.parse(localStorage.getItem(`pawverse_likes_${currentUserId}`) || '{}')
     
     setPosts(mixed.filter(p=>!hidden.includes(p.id)).map(p => ({
       ...p,
@@ -347,33 +349,50 @@ export default function Feed() {
   }
 
   const toggleLike = async (post) => {
-    const isLiked = post.liked_by_me
-    const newLikes = (post.likes||0) + (isLiked ? -1 : 1)
-    
-    const savedLikes = JSON.parse(localStorage.getItem(`pawverse_feed_likes_${user.id}`) || '{}')
-    savedLikes[post.id] = !isLiked
-    localStorage.setItem(`pawverse_feed_likes_${user.id}`, JSON.stringify(savedLikes))
-    
-    if (post.type === 'reel') {
-        const reelLikes = JSON.parse(localStorage.getItem(`pawverse_liked_reels_${user.id}`) || '{}')
-        reelLikes[post.id] = !isLiked
-        localStorage.setItem(`pawverse_liked_reels_${user.id}`, JSON.stringify(reelLikes))
+    if (!user) return
+    let currentPet = pet
+    if (!currentPet) {
+      const { data: pD } = await supabase.from('pets').select('*').eq('user_id', user.id).eq('is_health_pet', false).maybeSingle()
+      if (pD) {
+        currentPet = pD
+        setPet(pD)
+      } else {
+        alert("Please make sure you have a pet profile to Paw posts!")
+        return
+      }
     }
 
-    setPosts(prev=>prev.map(p=>p.id===post.id?{...p,likes:newLikes,liked_by_me:!isLiked}:p))
+    const isLiked = post.liked_by_me
+    const newLikes = Math.max(0, (post.likes || 0) + (isLiked ? -1 : 1))
+    
+    const savedLikes = JSON.parse(localStorage.getItem(`pawverse_likes_${user.id}`) || '{}')
+    savedLikes[post.id] = !isLiked
+    localStorage.setItem(`pawverse_likes_${user.id}`, JSON.stringify(savedLikes))
+
+    setPosts(prev => prev.map(p => p.id === post.id ? { ...p, likes: newLikes, liked_by_me: !isLiked } : p))
     
     const tableName = post.type === 'reel' ? 'reels' : 'posts'
-    const { error } = await supabase.from(tableName).update({likes:newLikes}).eq('id',post.id)
+    const { error } = await supabase.rpc('toggle_paw', {
+      table_name: tableName,
+      row_id: String(post.id),
+      increment_by: isLiked ? -1 : 1
+    })
     
     if (error) { 
-        setPosts(prev=>prev.map(p=>p.id===post.id?{...p,likes:post.likes,liked_by_me:isLiked}:p))
+        console.error("Like RPC error:", error)
+        alert(`Could not save your Paw: ${error.message || 'Unknown error'}`)
+        setPosts(prev => prev.map(p => p.id === post.id ? { ...p, likes: post.likes, liked_by_me: isLiked } : p))
         savedLikes[post.id] = isLiked
-        localStorage.setItem(`pawverse_feed_likes_${user.id}`, JSON.stringify(savedLikes))
+        localStorage.setItem(`pawverse_likes_${user.id}`, JSON.stringify(savedLikes))
         return 
     }
     
     if (!isLiked && post.pets?.user_id && post.pets.user_id !== user.id) {
-      await supabase.from('notifications').insert({user_id:post.pets.user_id,type:'like',message:`${pet.pet_name} pawed your ${post.type}! ❤️|/post/${post.id}`})
+      await supabase.from('notifications').insert({
+        user_id: post.pets.user_id,
+        type: 'like',
+        message: `${currentPet.pet_name} pawed your ${post.type}! ❤️|/post/${post.id}`
+      })
       
       // ── SEND REAL BACKGROUND PUSH ──
       fetch('/api/push', {
@@ -448,7 +467,8 @@ export default function Feed() {
   const handleDeletePost = async (post) => {
     if (!confirm('Delete this post?')) return
     if (post.pets?.user_id!==user.id) { alert('You can only delete your own posts!'); return }
-    const { error } = await supabase.from('posts').delete().eq('id',post.id).eq('pet_id',pet.id)
+    const table = post.type === 'reel' ? 'reels' : 'posts'
+    const { error } = await supabase.from(table).delete().eq('id',post.id).eq('pet_id',pet.id)
     if (error) { alert('Could not delete post.'); return }
     setPosts(prev=>prev.filter(p=>p.id!==post.id)); setOpenMenu(null)
   }

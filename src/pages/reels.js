@@ -114,14 +114,17 @@ export default function Reels() {
       if (!session) { router.push('/'); return }
       setUser(session.user)
       
-      const saved = localStorage.getItem(`pawverse_liked_reels_${session.user.id}`)
+      const saved = localStorage.getItem(`pawverse_likes_${session.user.id}`)
       if (saved) {
         try { setLikedMap(JSON.parse(saved)) } catch(err){}
       }
       
-      const { data: petData, error: petError } = await supabase.from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).single()
+      const { data: petData, error: petError } = await supabase.from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).maybeSingle()
       if (petError) console.error("Pet fetch error:", petError)
-      setPet(petData)
+      if (petData) {
+        setPet(petData)
+        setForm?.(petData) // If setForm exists in this scope (it doesn't, but for safety in other files)
+      }
       
       await fetchReels()
 
@@ -214,18 +217,42 @@ export default function Reels() {
   }
 
   const handleLike = async (reel, idx) => {
+    if (!user) return
+    let currentPet = pet
+    if (!currentPet) {
+      const { data: pD } = await supabase.from('pets').select('*').eq('user_id', user.id).eq('is_health_pet', false).maybeSingle()
+      if (pD) {
+        currentPet = pD
+        setPet(pD)
+      }
+    }
+
     const alreadyLiked = likedMap[reel.id]
-    const newLikes = (reel.likes || 0) + (alreadyLiked ? -1 : 1)
+    const newLikes = Math.max(0, (reel.likes || 0) + (alreadyLiked ? -1 : 1))
     const newLikedMap = { ...likedMap, [reel.id]: !alreadyLiked }
     setLikedMap(newLikedMap)
-    if (user) localStorage.setItem(`pawverse_liked_reels_${user.id}`, JSON.stringify(newLikedMap))
-    setReels(prev => prev.map((r, i) => i === idx ? { ...r, likes: newLikes } : r))
-    await supabase.from('reels').update({ likes: newLikes }).eq('id', reel.id)
+    if (user) localStorage.setItem(`pawverse_likes_${user.id}`, JSON.stringify(newLikedMap))
+    setReels(prev => prev.map(r => r.id === reel.id ? { ...r, likes: newLikes } : r))
+    const { error } = await supabase.rpc('toggle_paw', {
+      table_name: 'reels',
+      row_id: String(reel.id),
+      increment_by: alreadyLiked ? -1 : 1
+    })
+    
+    if (error) {
+        console.error("Reel like RPC error:", error)
+        alert(`Could not save your Paw: ${error.message || 'Unknown error'}`)
+        setLikedMap(likedMap) // Revert
+        if (user) localStorage.setItem(`pawverse_likes_${user.id}`, JSON.stringify(likedMap))
+        setReels(prev => prev.map(r => r.id === reel.id ? { ...r, likes: reel.likes } : r))
+        return
+    }
     if (!alreadyLiked && reel.pets?.user_id && reel.pets.user_id !== user.id) {
+      const petName = currentPet?.pet_name || 'A pet'
       await supabase.from('notifications').insert({
         user_id: reel.pets.user_id,
         type: 'like',
-        message: `${pet.pet_name} liked your reel! 🎬❤️|/post/${reel.id}`,
+        message: `${petName} liked your reel! 🎬❤️|/post/${reel.id}`,
       })
 
       // ── SEND REAL BACKGROUND PUSH ──
@@ -234,7 +261,7 @@ export default function Reels() {
         body: JSON.stringify({
           user_id: reel.pets.user_id,
           title: '🎬 Reel Liked!',
-          body: `${pet?.pet_name} liked your reel! ❤️`,
+          body: `${petName} liked your reel! ❤️`,
           url: `/post/${reel.id}`
         })
       }).catch(e => console.error('Push failed:', e))

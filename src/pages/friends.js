@@ -523,7 +523,8 @@ export default function Friends() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 14 }}>
                 {suggestions.map(s => (
                   <div key={s.id} className="card"
-                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 18, textAlign: 'center' }}>
+                    onClick={() => router.push(`/user/${s.user_id}`)}
+                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 18, textAlign: 'center', cursor: 'pointer' }}>
                     <Avatar pet={s} size={64} borderColor='#EDE8FF' />
                     <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.95rem', marginTop: 8 }}>
                       {s.pet_name}

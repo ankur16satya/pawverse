@@ -24,8 +24,10 @@ export default function PostPage() {
     const { data: { session } } = await supabase.auth.getSession()
     if (session) {
       setUser(session.user)
-      const { data: petData } = await supabase.from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).single()
-      setPet(petData)
+      const { data: petData } = await supabase.from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).maybeSingle()
+      if (petData) {
+        setPet(petData)
+      }
     }
 
     let { data: postData, error } = await supabase
@@ -62,8 +64,7 @@ export default function PostPage() {
 
     // load liked state
     if (session) {
-      const lsKey = isReel ? `pawverse_liked_reels_${session.user.id}` : `pawverse_feed_likes_${session.user.id}`
-      const saved = JSON.parse(localStorage.getItem(lsKey) || '{}')
+      const saved = JSON.parse(localStorage.getItem(`pawverse_likes_${session.user.id}`) || '{}')
       setLikedByMe(!!saved[id])
     }
 
@@ -72,18 +73,52 @@ export default function PostPage() {
 
   const handleLike = async () => {
     if (!user || !post) return
-    const newLikes = (post.likes || 0) + (likedByMe ? -1 : 1)
+    let currentPet = pet
+    if (!currentPet) {
+      const { data: pD } = await supabase.from('pets').select('*').eq('user_id', user.id).eq('is_health_pet', false).maybeSingle()
+      if (pD) {
+        currentPet = pD
+        setPet(pD)
+      } else {
+        alert("Please make sure you have a pet profile to Paw posts!")
+        return
+      }
+    }
+
+    const newLikedState = !likedByMe
+    const newLikes = Math.max(0, (post.likes || 0) + (newLikedState ? 1 : -1))
     
     // update localStorage cache
-    const lsKey = post.is_reel ? `pawverse_liked_reels_${user.id}` : `pawverse_feed_likes_${user.id}`
-    const saved = JSON.parse(localStorage.getItem(lsKey) || '{}')
-    saved[post.id] = !likedByMe
-    localStorage.setItem(lsKey, JSON.stringify(saved))
+    const saved = JSON.parse(localStorage.getItem(`pawverse_likes_${user.id}`) || '{}')
+    saved[post.id] = newLikedState
+    localStorage.setItem(`pawverse_likes_${user.id}`, JSON.stringify(saved))
 
-    setLikedByMe(!likedByMe)
+    setLikedByMe(newLikedState)
     setPost(p => ({ ...p, likes: newLikes }))
     const tableName = post.is_reel ? 'reels' : 'posts';
-    await supabase.from(tableName).update({ likes: newLikes }).eq('id', post.id)
+    const { error } = await supabase.rpc('toggle_paw', {
+      table_name: tableName,
+      row_id: String(post.id),
+      increment_by: newLikedState ? 1 : -1
+    })
+
+    if (error) {
+        console.error("Like RPC error:", error)
+        alert(`Could not save your Paw: ${error.message || 'Unknown error'}`)
+        setLikedByMe(!newLikedState)
+        setPost(p => ({ ...p, likes: post.likes }))
+        saved[post.id] = !newLikedState
+        localStorage.setItem(`pawverse_likes_${user.id}`, JSON.stringify(saved))
+        return
+    }
+
+    if (newLikedState && post.pets?.user_id && post.pets.user_id !== user.id) {
+        await supabase.from('notifications').insert({
+            user_id: post.pets.user_id,
+            type: 'like',
+            message: `${currentPet.pet_name} pawed your post! ❤️|/post/${post.id}`
+        })
+    }
   }
 
   const handleComment = async () => {

@@ -35,11 +35,11 @@ export default function Profile() {
         const { data: receivedFriends } = await supabase.from('friend_requests').select('sender_id').eq('receiver_id', userId).eq('status', 'accepted')
         const friendList = []
         for (const req of (sentFriends || [])) {
-          const { data: friendPet } = await supabase.from('pets').select('*').eq('user_id', req.receiver_id).eq('is_health_pet', false).single()
+          const { data: friendPet } = await supabase.from('pets').select('*').eq('user_id', req.receiver_id).eq('is_health_pet', false).maybeSingle()
           if (friendPet) friendList.push(friendPet)
         }
         for (const req of (receivedFriends || [])) {
-          const { data: friendPet } = await supabase.from('pets').select('*').eq('user_id', req.sender_id).eq('is_health_pet', false).single()
+          const { data: friendPet } = await supabase.from('pets').select('*').eq('user_id', req.sender_id).eq('is_health_pet', false).maybeSingle()
           if (friendPet) friendList.push(friendPet)
         }
         setFriends(friendList)
@@ -47,7 +47,7 @@ export default function Profile() {
       
       fetchFriends(session.user.id)
 
-      const { data: existingPet } = await supabase.from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).single()
+      const { data: existingPet } = await supabase.from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).maybeSingle()
 
       if (existingPet) {
         setPet(existingPet)
