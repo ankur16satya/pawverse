@@ -402,8 +402,11 @@ export default function Friends() {
                 {sentRequests.map(req => (
                   <div key={req.id} className="card"
                     style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 20, textAlign: 'center' }}>
-                    <Avatar pet={req.receiverPet} size={72} borderColor='#6C4BF6' />
-                    <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.05rem', marginTop: 10 }}>
+                    <div onClick={() => router.push(`/user/${req.receiver_id}`)} style={{ cursor: 'pointer' }}>
+                      <Avatar pet={req.receiverPet} size={72} borderColor='#6C4BF6' />
+                    </div>
+                    <div onClick={() => router.push(`/user/${req.receiver_id}`)}
+                      style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.05rem', marginTop: 10, cursor: 'pointer', color: '#1E1347' }}>
                       {req.receiverPet?.pet_name}
                     </div>
                     <div style={{ color: '#6B7280', fontSize: '0.78rem' }}>{req.receiverPet?.pet_breed}</div>

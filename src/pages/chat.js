@@ -13,6 +13,7 @@ export default function Chat() {
   const [loading, setLoading] = useState(true)
   const [friends, setFriends] = useState([])
   const [conversations, setConversations] = useState([])
+  const [chatSearch, setChatSearch] = useState('')
   const [activeConv, setActiveConv] = useState(null)
   const [activeFriend, setActiveFriend] = useState(null)
   const [messages, setMessages] = useState([])
@@ -512,6 +513,20 @@ export default function Chat() {
             <div style={{ padding: '16px 14px 10px', borderBottom: '1px solid #EDE8FF' }}>
             <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.2rem', color: '#1E1347' }}>💬 Messages</div>
             <div style={{ fontSize: '0.78rem', color: '#6B7280', marginTop: 2 }}>{friends.length} friend{friends.length !== 1 ? 's' : ''}</div>
+            <div style={{ marginTop: 8, position: 'relative' }}>
+              <input
+                type="text"
+                value={chatSearch}
+                onChange={e => setChatSearch(e.target.value)}
+                placeholder="🔍 Search friends..."
+                style={{
+                  width: '100%', boxSizing: 'border-box', padding: '7px 12px',
+                  borderRadius: 10, border: '1.5px solid #EDE8FF',
+                  fontFamily: 'Nunito, sans-serif', fontSize: '0.82rem',
+                  background: '#fff', color: '#1E1347', outline: 'none'
+                }}
+              />
+            </div>
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -529,6 +544,14 @@ export default function Chat() {
                   return false // Completely hide from list if cleared
                 }
                 return true
+              }).filter(friend => {
+                if (!chatSearch.trim()) return true
+                const q = chatSearch.toLowerCase()
+                return (
+                  friend.pet_name?.toLowerCase().includes(q) ||
+                  friend.owner_name?.toLowerCase().includes(q) ||
+                  friend.pet_breed?.toLowerCase().includes(q)
+                )
               }).sort((a, b) => {
                 const convA = conversations.find(c => (c.participant_1 === user.id && c.participant_2 === a.user_id) || (c.participant_2 === user.id && c.participant_1 === a.user_id))
                 const convB = conversations.find(c => (c.participant_1 === user.id && c.participant_2 === b.user_id) || (c.participant_2 === user.id && c.participant_1 === b.user_id))

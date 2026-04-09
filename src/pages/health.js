@@ -143,7 +143,7 @@ function AddPetModal({ onClose, onSave }) {
 }
 
 // ─── Health Overview ──────────────────────────────────────────────────────────
-function HealthOverview({ pets, onSelectPet, onAddPet }) {
+function HealthOverview({ pets, onSelectPet, onAddPet, onDeletePet }) {
   return (
     <div style={{ animation: 'fadeIn 0.5s ease' }}>
       {/* Overview Hero */}
@@ -164,11 +164,25 @@ function HealthOverview({ pets, onSelectPet, onAddPet }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 16 }}>
         {pets.map(pet => (
-          <div key={pet.id} onClick={() => onSelectPet(pet)} className="health-ov-card">
-            <div style={{ fontSize: '3rem', marginBottom: 10 }}>{pet.emoji || '🐾'}</div>
-            <div style={{ fontWeight: 800, fontSize: '1rem', color: '#1E1347' }}>{pet.pet_name}</div>
-            <div style={{ fontSize: '0.73rem', color: '#6B7280', marginTop: 2 }}>{pet.pet_breed || pet.pet_type}</div>
-            <div style={{ marginTop: 12, background: '#F3F0FF', color: '#6C4BF6', padding: '6px 0', borderRadius: 10, fontSize: '0.72rem', fontWeight: 800, width: '100%' }}>View Records →</div>
+          <div key={pet.id} className="health-ov-card" style={{ position: 'relative' }}>
+            {/* Delete button */}
+            <button
+              onClick={e => { e.stopPropagation(); onDeletePet(pet) }}
+              title="Delete pet profile"
+              style={{
+                position: 'absolute', top: 8, right: 8,
+                background: '#FFDCE0', border: 'none', borderRadius: '50%',
+                width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', fontSize: '0.75rem', color: '#FF4757', fontWeight: 800,
+                lineHeight: 1, zIndex: 2, padding: 0
+              }}
+            >🗑️</button>
+            <div onClick={() => onSelectPet(pet)} style={{ width: '100%', cursor: 'pointer' }}>
+              <div style={{ fontSize: '3rem', marginBottom: 10 }}>{pet.emoji || '🐾'}</div>
+              <div style={{ fontWeight: 800, fontSize: '1rem', color: '#1E1347' }}>{pet.pet_name}</div>
+              <div style={{ fontSize: '0.73rem', color: '#6B7280', marginTop: 2 }}>{pet.pet_breed || pet.pet_type}</div>
+              <div style={{ marginTop: 12, background: '#F3F0FF', color: '#6C4BF6', padding: '6px 0', borderRadius: 10, fontSize: '0.72rem', fontWeight: 800, width: '100%' }}>View Records →</div>
+            </div>
           </div>
         ))}
         <div onClick={onAddPet} className="health-ov-card add-card">
@@ -814,6 +828,19 @@ export default function Health() {
     }
   }
 
+  const handleDeletePet = async (pet) => {
+    if (!confirm(`Delete "${pet.pet_name}"? This will also remove all their vaccine and weight records.`)) return
+    await supabase.from('pet_vaccines').delete().eq('pet_name', pet.pet_name).eq('user_id', user.id)
+    await supabase.from('weight_logs').delete().eq('pet_id', pet.id)
+    const { error } = await supabase.from('pets').delete().eq('id', pet.id)
+    if (error) {
+      alert('Error deleting pet: ' + error.message)
+    } else {
+      setPets(prev => prev.filter(p => p.id !== pet.id))
+      if (activePet?.id === pet.id) setActivePet(null)
+    }
+  }
+
   const bookVet = () => router.push('/marketplace?category=services')
 
   return (
@@ -1030,7 +1057,7 @@ export default function Health() {
             {/* ── Main content ── */}
             <div className="health-main">
               {!activePet ? (
-                <HealthOverview pets={pets} onSelectPet={setActivePet} onAddPet={()=>setShowAddPet(true)} />
+                <HealthOverview pets={pets} onSelectPet={setActivePet} onAddPet={()=>setShowAddPet(true)} onDeletePet={handleDeletePet} />
               ) : (
                 <>
                   {/* Active pet header (shown on desktop above dashboard) */}
