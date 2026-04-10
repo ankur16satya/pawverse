@@ -146,25 +146,21 @@ export default function Feed() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { router.push('/'); return }
     setUser(session.user)
-    const { data: petData } = await supabase.from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).maybeSingle()
+    const { data: petData } = await supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,paw_coins,pet_breed,owner_name,is_health_pet').eq('user_id', session.user.id).eq('is_health_pet', false).maybeSingle()
     if (petData) {
       setPet(petData)
     }
     await fetchPosts(session.user.id)
-    const { data: others } = await supabase.from('pets').select('*').neq('user_id', session.user.id).eq('is_health_pet', false).limit(6)
+    const { data: others } = await supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,pet_breed,owner_name').neq('user_id', session.user.id).eq('is_health_pet', false).limit(6)
     setSuggestions(others || [])
-    const { data: sReqs } = await supabase.from('friend_requests').select('*').eq('sender_id', session.user.id)
-    const { data: rReqs } = await supabase.from('friend_requests').select('*').eq('receiver_id', session.user.id)
+    const { data: sReqs } = await supabase.from('friend_requests').select('receiver_id,status').eq('sender_id', session.user.id)
+    const { data: rReqs } = await supabase.from('friend_requests').select('sender_id,status').eq('receiver_id', session.user.id)
     const statuses = {}
     ;(sReqs || []).forEach(r => { statuses[r.receiver_id] = r.status })
     ;(rReqs || []).forEach(r => { statuses[r.sender_id] = r.status })
     setFriendStatuses(statuses)
     const fIds = [...(sReqs||[]).filter(r=>r.status==='accepted').map(r=>r.receiver_id), ...(rReqs||[]).filter(r=>r.status==='accepted').map(r=>r.sender_id)]
-    if (fIds.length > 0) { const { data: fp } = await supabase.from('pets').select('*').in('user_id', fIds).eq('is_health_pet', false); setFriends(fp||[]) }
-    supabase.channel(`feed-posts-${session.user.id}`)
-      .on('postgres_changes', { event:'UPDATE', schema:'public', table:'posts' }, (p) => { const u=p.new; setPosts(prev=>prev.map(x=>x.id===u.id?{...x,likes:u.likes,comments_count:u.comments_count,shares_count:u.shares_count}:x)) })
-      .on('postgres_changes', { event:'INSERT', schema:'public', table:'posts' }, (p) => { if(p.new.pet_id!==petData?.id) fetchPosts(session.user.id) })
-      .subscribe()
+    if (fIds.length > 0) { const { data: fp } = await supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,owner_name').in('user_id', fIds).eq('is_health_pet', false); setFriends(fp||[]) }
     setLoading(false)
   }
 
@@ -362,7 +358,7 @@ export default function Feed() {
     if (!user) return
     let currentPet = pet
     if (!currentPet) {
-      const { data: pD } = await supabase.from('pets').select('*').eq('user_id', user.id).eq('is_health_pet', false).maybeSingle()
+      const { data: pD } = await supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,paw_coins').eq('user_id', user.id).eq('is_health_pet', false).maybeSingle()
       if (pD) {
         currentPet = pD
         setPet(pD)

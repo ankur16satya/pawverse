@@ -83,28 +83,34 @@ export default function Reels() {
   useEffect(() => { init() }, [])
 
   useEffect(() => {
-    // Auto-play reel in view, pause others
-    Object.entries(videoRefs.current).forEach(([idx, vid]) => {
-      if (!vid) return
-      const aud = audioRefs.current[idx]
-      if (parseInt(idx) === activeReel) {
-        vid.play().catch(() => {
-          setIsReelsMuted(true)
-          vid.muted = true
-          vid.play().catch(()=>{})
-        })
-        if (aud) {
-          aud.play().catch(() => {
-            setIsReelsMuted(true)
-            aud.muted = true
-            aud.play().catch(()=>{})
+    // Small delay to ensure videoRefs are mounted after render
+    const timer = setTimeout(() => {
+      Object.entries(videoRefs.current).forEach(([idx, vid]) => {
+        if (!vid) return
+        const aud = audioRefs.current[idx]
+        const isActive = parseInt(idx) === activeReel
+        if (isActive) {
+          // Respect mute state; if reel has separate audio track, keep video muted
+          vid.muted = isReelsMuted || !!aud
+          vid.play().catch(() => {
+            // Fallback: force muted play to satisfy autoplay policy
+            vid.muted = true
+            vid.play().catch(() => {})
           })
+          if (aud) {
+            aud.muted = isReelsMuted
+            aud.play().catch(() => {
+              aud.muted = true
+              aud.play().catch(() => {})
+            })
+          }
+        } else {
+          vid.pause()
+          if (aud) aud.pause()
         }
-      } else {
-        vid.pause()
-        if (aud) aud.pause()
-      }
-    })
+      })
+    }, 100)
+    return () => clearTimeout(timer)
   }, [activeReel, reels, isReelsMuted])
 
   const init = async () => {
@@ -151,12 +157,21 @@ export default function Reels() {
   }
 
   const fetchReels = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('reels')
       .select('*, pets(pet_name, emoji, owner_name, avatar_url, user_id)')
       .order('created_at', { ascending: false })
       .limit(30)
+    if (error) console.error('fetchReels error:', error)
     setReels(data || [])
+  }
+
+  const playSound = (type) => {
+    try {
+      const a = new Audio(type === 'message' ? '/message.mp3' : '/notification.mp3')
+      a.volume = 0.5
+      a.play().catch(() => {})
+    } catch(e) {}
   }
 
   const handleVideoSelect = (e) => {
@@ -172,15 +187,24 @@ export default function Reels() {
     if (!selectedVideo || !pet) return
     setUploading(true)
     try {
-      const publicUrl = await uploadToCloudinary(selectedVideo, 'reels')
+      // Upload to Cloudinary (same as feed.js — avoids Vercel's 4.5MB API limit)
+      let publicUrl
+      try {
+        publicUrl = await uploadToCloudinary(selectedVideo, 'reels')
+      } catch (uploadErr) {
+        alert('Video upload failed: ' + (uploadErr.message || 'Unknown error'))
+        setUploading(false)
+        return
+      }
 
       const { data, error } = await supabase.from('reels').insert({
         pet_id: pet.id,
+        user_id: user.id,
         video_url: publicUrl,
         caption: caption,
         likes: 0,
         views: 0,
-      }).select('*, pets(pet_name, emoji, owner_name, avatar_url, user_id)').single()
+      }).select('*').single()
       
       if (error) {
         console.error("Supabase reel error:", error)
@@ -378,7 +402,7 @@ export default function Reels() {
           ref={containerRef}
           onScroll={handleScroll}
           style={{
-            height: 'calc(100dvh - 70px - 60px)',
+            height: 'calc(100vh - 130px)',
             marginTop: 70,
             overflowY: 'scroll',
             scrollSnapType: 'y mandatory',
@@ -387,7 +411,7 @@ export default function Reels() {
           }}>
           {reels.map((reel, idx) => (
             <div key={reel.id} style={{
-              height: '100%',
+              height: 'calc(100vh - 130px)',
               scrollSnapAlign: 'start',
               position: 'relative',
               background: '#111',
@@ -395,6 +419,7 @@ export default function Reels() {
               alignItems: 'center',
               justifyContent: 'center',
               overflow: 'hidden',
+              flexShrink: 0,
             }}>
               {/* Video */}
               <video
@@ -402,7 +427,9 @@ export default function Reels() {
                 src={reel.video_url}
                 loop
                 playsInline
-                muted={reel.audio_url ? true : isReelsMuted}
+                autoPlay={idx === 0}
+                muted
+                preload="auto"
                 onClick={() => {
                   const vid = videoRefs.current[idx]
                   const aud = audioRefs.current[idx]
@@ -416,7 +443,7 @@ export default function Reels() {
                     }
                   }
                 }}
-                style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'pointer' }}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer', display: 'block' }}
               />
 
               {/* Audio Overlay (if music added) */}

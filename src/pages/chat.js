@@ -94,7 +94,7 @@ export default function Chat() {
     userRef.current = session.user
 
     const { data: petData } = await supabase
-      .from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).single()
+      .from('pets').select('id,user_id,pet_name,emoji,avatar_url,paw_coins,owner_name').eq('user_id', session.user.id).eq('is_health_pet', false).single()
     setPet(petData)
     petRef.current = petData
 
@@ -119,7 +119,7 @@ export default function Chat() {
         // Check if this message belongs to one of my conversations
         const { data: conv } = await supabase
           .from('conversations')
-          .select('*')
+          .select('id,participant_1,participant_2,last_message,last_message_at,participant_1_cleared_at,participant_2_cleared_at')
           .eq('id', newMsg.conversation_id)
           .or(`participant_1.eq.${userId},participant_2.eq.${userId}`)
           .single()
@@ -205,25 +205,25 @@ export default function Chat() {
 
   const fetchFriendsAndConversations = async (userId) => {
     const { data: sent } = await supabase
-      .from('friend_requests').select('*')
+      .from('friend_requests').select('receiver_id')
       .eq('sender_id', userId).eq('status', 'accepted')
     const { data: received } = await supabase
-      .from('friend_requests').select('*')
+      .from('friend_requests').select('sender_id')
       .eq('receiver_id', userId).eq('status', 'accepted')
 
     const friendList = []
     for (const req of (sent || [])) {
-      const { data: p } = await supabase.from('pets').select('*').eq('user_id', req.receiver_id).eq('is_health_pet', false).single()
+      const { data: p } = await supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,owner_name').eq('user_id', req.receiver_id).eq('is_health_pet', false).single()
       if (p) friendList.push(p)
     }
     for (const req of (received || [])) {
-      const { data: p } = await supabase.from('pets').select('*').eq('user_id', req.sender_id).eq('is_health_pet', false).single()
+      const { data: p } = await supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,owner_name').eq('user_id', req.sender_id).eq('is_health_pet', false).single()
       if (p) friendList.push(p)
     }
     setFriends(friendList)
 
     const { data: convs } = await supabase
-      .from('conversations').select('*')
+      .from('conversations').select('id,participant_1,participant_2,last_message,last_message_at,participant_1_cleared_at,participant_2_cleared_at')
       .or(`participant_1.eq.${userId},participant_2.eq.${userId}`)
       .order('last_message_at', { ascending: false })
     setConversations(convs || [])
@@ -274,7 +274,7 @@ export default function Chat() {
 
     // Fetch messages
     const { data: msgs } = await supabase
-      .from('messages').select('*')
+      .from('messages').select('id,conversation_id,sender_id,content,created_at,is_read,shared_post_id,shared_post_preview,image_url,deleted_for')
       .eq('conversation_id', conv.id)
       .order('created_at', { ascending: true })
       
@@ -402,7 +402,7 @@ export default function Chat() {
 
   const updateConversationLastMessage = async (convId) => {
     const { data: latestMsgs } = await supabase.from('messages')
-      .select('*')
+      .select('id,content,shared_post_preview,image_url,created_at')
       .eq('conversation_id', convId)
       .order('created_at', { ascending: false })
       .limit(1)

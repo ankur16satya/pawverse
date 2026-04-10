@@ -24,7 +24,7 @@ export default function Friends() {
     setUser(session.user)
 
     const { data: petData } = await supabase
-      .from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).single()
+      .from('pets').select('id,user_id,pet_name,emoji,avatar_url,paw_coins,pet_breed,owner_name').eq('user_id', session.user.id).eq('is_health_pet', false).single()
     setPet(petData)
 
     await fetchAll(session.user.id)
@@ -44,7 +44,7 @@ export default function Friends() {
     // Step 1: Get all pending requests where I am the receiver
     const { data: requests, error } = await supabase
       .from('friend_requests')
-      .select('*')
+      .select('id,sender_id,receiver_id,status,created_at')
       .eq('receiver_id', userId)
       .eq('status', 'pending')
 
@@ -58,7 +58,7 @@ export default function Friends() {
     for (const req of requests) {
       const { data: senderPet } = await supabase
         .from('pets')
-        .select('*')
+        .select('id,user_id,pet_name,emoji,avatar_url,pet_breed,owner_name,location')
         .eq('user_id', req.sender_id)
         .eq('is_health_pet', false)
         .single()
@@ -75,7 +75,7 @@ export default function Friends() {
     // Step 1: Get all requests I have sent
     const { data: requests, error } = await supabase
       .from('friend_requests')
-      .select('*')
+      .select('id,sender_id,receiver_id,status,created_at')
       .eq('sender_id', userId)
       .in('status', ['pending', 'declined'])
 
@@ -89,7 +89,7 @@ export default function Friends() {
     for (const req of requests) {
       const { data: receiverPet } = await supabase
         .from('pets')
-        .select('*')
+        .select('id,user_id,pet_name,emoji,avatar_url,pet_breed,owner_name,location')
         .eq('user_id', req.receiver_id)
         .eq('is_health_pet', false)
         .single()
@@ -105,13 +105,13 @@ export default function Friends() {
   const fetchFriends = async (userId) => {
     const { data: sent } = await supabase
       .from('friend_requests')
-      .select('*')
+      .select('receiver_id')
       .eq('sender_id', userId)
       .eq('status', 'accepted')
 
     const { data: received } = await supabase
       .from('friend_requests')
-      .select('*')
+      .select('sender_id')
       .eq('receiver_id', userId)
       .eq('status', 'accepted')
 
@@ -119,13 +119,13 @@ export default function Friends() {
 
     for (const req of (sent || [])) {
       const { data: friendPet } = await supabase
-        .from('pets').select('*').eq('user_id', req.receiver_id).eq('is_health_pet', false).single()
+        .from('pets').select('id,user_id,pet_name,emoji,avatar_url,pet_breed,owner_name').eq('user_id', req.receiver_id).eq('is_health_pet', false).single()
       if (friendPet) allFriends.push(friendPet)
     }
 
     for (const req of (received || [])) {
       const { data: friendPet } = await supabase
-        .from('pets').select('*').eq('user_id', req.sender_id).eq('is_health_pet', false).single()
+        .from('pets').select('id,user_id,pet_name,emoji,avatar_url,pet_breed,owner_name').eq('user_id', req.sender_id).eq('is_health_pet', false).single()
       if (friendPet) allFriends.push(friendPet)
     }
 
@@ -144,7 +144,7 @@ export default function Friends() {
       ...(receivedReqs || []).map(r => r.sender_id),
     ]
 
-    const { data: allPets } = await supabase.from('pets').select('*').eq('is_health_pet', false).limit(30)
+    const { data: allPets } = await supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,pet_breed,owner_name,location').eq('is_health_pet', false).limit(30)
 
     const filtered = (allPets || []).filter(p => !excludedUserIds.includes(p.user_id))
     setSuggestions(filtered.slice(0, 8))

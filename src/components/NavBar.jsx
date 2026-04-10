@@ -295,7 +295,7 @@ export default function NavBar({ user, pet }) {
 
   const nav = [
   { href: '/feed',        icon: <Home size={26} />, label: 'Feed' },
-  { href: '/reels',       icon: <Video size={26} />, label: 'Reels' },
+  // { href: '/reels',       icon: <Video size={26} />, label: 'Reels' },
   { href: '/marketplace', icon: <ShoppingBag size={26} />, label: 'Market' },
   { href: '/chat',        icon: <MessageCircle size={26} />, label: 'Chat', badge: unreadMsgCount },
   { href: '/friends',     icon: <Users size={26} />, label: 'Friends', badge: pendingFriendCount },
@@ -309,7 +309,8 @@ export default function NavBar({ user, pet }) {
   // Mobile bottom nav — 5 key items + More
   const mobileNav = [
     { href: '/feed',        icon: <Home size={26} />, label: 'Feed' },
-    { href: '/reels',       icon: <Video size={26} />, label: 'Reels' },
+    { href: '/adopt',     icon: <PawPrint size={24} />,    label: 'Adopt',      desc: 'Find pets to adopt' },
+    // { href: '/reels',       icon: <Video size={26} />, label: 'Reels' },
     { href: '/marketplace', icon: <ShoppingBag size={26} />, label: 'Market' },
      { href: '/chat',        icon: <MessageCircle size={26} />, label: 'Chat',  badge: unreadMsgCount },
     { href: '/health',      icon: <HeartPulse size={26} />, label: 'Health' },
