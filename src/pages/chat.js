@@ -150,10 +150,29 @@ export default function Chat() {
         }
 
         // If message is for active conversation, add to messages list
-        if (isInActiveConv) {
+        // For messages from OTHERS only — our own are added optimistically in sendMessage
+        if (isInActiveConv && !isFromMe) {
           setMessages(prev => {
             if (prev.find(m => m.id === newMsg.id)) return prev
             return [...prev, newMsg]
+          })
+        } else if (isInActiveConv && isFromMe) {
+          // Replace any temp optimistic message with the real DB one (by matching content+time proximity)
+          setMessages(prev => {
+            const alreadyReal = prev.find(m => m.id === newMsg.id)
+            if (alreadyReal) return prev
+            // Replace the temp message if matches
+            const tempIdx = prev.findIndex(m =>
+              typeof m.id === 'string' && m.id.startsWith('temp-') &&
+              m.content === newMsg.content &&
+              m.sender_id === newMsg.sender_id
+            )
+            if (tempIdx !== -1) {
+              const updated = [...prev]
+              updated[tempIdx] = newMsg
+              return updated
+            }
+            return prev
           })
         }
 
@@ -314,6 +333,12 @@ export default function Chat() {
     if ((!newMessage.trim() && !selectedImage) || !activeConv) return
     setSending(true)
 
+    const msgContent = newMessage.trim()
+    setNewMessage('')
+    setSelectedImage(null)
+    setImagePreview(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+
     try {
       let imageUrl = null
       if (selectedImage) {
@@ -325,18 +350,56 @@ export default function Chat() {
       const msgData = {
         conversation_id: activeConv.id,
         sender_id: user.id,
-        content: newMessage.trim() || '',
+        content: msgContent || '',
         image_url: imageUrl,
         is_read: false,
       }
 
-      await supabase.from('messages').insert(msgData)
+      // Optimistic update — show message immediately
+      const tempId = `temp-${Date.now()}`
+      const optimisticMsg = {
+        ...msgData,
+        id: tempId,
+        created_at: new Date().toISOString(),
+        deleted_for: [],
+      }
+      setMessages(prev => [...prev, optimisticMsg])
+
+      const { data: inserted, error: insertError } = await supabase
+        .from('messages')
+        .insert(msgData)
+        .select('id,conversation_id,sender_id,content,created_at,is_read,shared_post_id,shared_post_preview,image_url,deleted_for')
+        .single()
+
+      if (insertError) {
+        // Revert optimistic update on error
+        setMessages(prev => prev.filter(m => m.id !== tempId))
+        alert('Failed to send message. Please try again.')
+        setSending(false)
+        return
+      }
+
+      // Replace temp message with real one from DB
+      if (inserted) {
+        setMessages(prev => prev.map(m => m.id === tempId ? inserted : m))
+      }
 
       // Update conversation preview
+      const previewText = msgContent || '📸 Image'
+      const now = new Date().toISOString()
       await supabase.from('conversations').update({
-        last_message: newMessage.trim() || '📸 Image',
-        last_message_at: new Date().toISOString()
+        last_message: previewText,
+        last_message_at: now
       }).eq('id', activeConv.id)
+
+      setConversations(prev => {
+        const conv = prev.find(c => c.id === activeConv.id)
+        if (!conv) return prev
+        return [
+          { ...conv, last_message: previewText, last_message_at: now },
+          ...prev.filter(c => c.id !== activeConv.id)
+        ]
+      })
 
       // ── SEND REAL BACKGROUND PUSH ──
       if (activeFriend?.user_id) {
@@ -345,16 +408,11 @@ export default function Chat() {
           body: JSON.stringify({
             user_id: activeFriend.user_id,
             title: `💬 New Message from ${pet?.pet_name || 'a Friend'}`,
-            body: newMessage.trim() || '📸 Sent an image',
+            body: msgContent || '📸 Sent an image',
             url: '/chat'
           })
         }).catch(e => console.error('Push fetch failed:', e))
       }
-
-      setNewMessage('')
-      setSelectedImage(null)
-      setImagePreview(null)
-      if (fileInputRef.current) fileInputRef.current.value = ''
     } catch (err) {
       alert('Failed to send message. Please try again.')
       setUploadingImage(false)

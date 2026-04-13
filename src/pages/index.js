@@ -60,22 +60,30 @@ export default function Home() {
     e.preventDefault()
     setError(''); setLoading(true)
     try {
-      const { data, error: authErr } = await supabase.auth.signUp({ email, password })
+      // Sign up without email verification
+      const { data, error: authErr } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo: null }
+      })
       if (authErr) throw authErr
 
-      // Save pet details to localStorage so profile page can use them
+      const userId = data?.user?.id
+      if (!userId) throw new Error('Signup failed — please try again.')
+
+      // Save pet details to localStorage as fallback
+      const emoji = PET_EMOJIS[petType] || '🐾'
       localStorage.setItem('pending_pet', JSON.stringify({
         owner_name: ownerName,
         pet_name: petName,
         pet_type: petType,
         pet_breed: petBreed,
-        emoji: PET_EMOJIS[petType] || '🐾',
+        emoji,
       }))
 
-      // Try to save pet profile immediately
-      const emoji = PET_EMOJIS[petType] || '🐾'
-      const { error: dbErr } = await supabase.from('pets').insert({
-        user_id: data.user.id,
+      // Save pet profile to DB immediately
+      await supabase.from('pets').insert({
+        user_id: userId,
         owner_name: ownerName,
         pet_name: petName,
         pet_type: petType,
@@ -87,14 +95,17 @@ export default function Home() {
         is_health_pet: false,
       })
 
-      // Even if db insert fails (email not confirmed yet), we saved to localStorage
-      // so profile page will auto-create it after login
-      if (dbErr) {
-        setSuccess('📧 Account created! Please check your email and click the confirmation link, then come back to sign in.')
-      } else {
-        setSuccess('🎉 Account created! Please check your email to confirm, then sign in.')
+      // Auto-login immediately — no email verification needed
+      const { error: loginErr } = await supabase.auth.signInWithPassword({ email, password })
+      if (loginErr) {
+        // If auto-login fails, show success and let them manually log in
+        setSuccess('🎉 Account created! You can now sign in.')
+        setMode('login')
+        return
       }
-      setMode('login')
+
+      // Redirect directly to feed
+      router.push('/feed')
     } catch (err) {
       setError(err.message)
     } finally {

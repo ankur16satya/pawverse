@@ -63,6 +63,9 @@ export default function Feed() {
     return () => document.removeEventListener('mousedown', h)
   }, [])
 
+  // Handle hashtag filter from URL
+  const activeTagFilter = router.query.tag || null
+
   const playSound = (type) => { try { const a = new Audio(type === 'message' ? '/message.mp3' : '/notification.mp3'); a.volume = 0.5; a.play().catch(() => {}) } catch(e){} }
 
   useEffect(() => {
@@ -146,21 +149,45 @@ export default function Feed() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { router.push('/'); return }
     setUser(session.user)
-    const { data: petData } = await supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,paw_coins,pet_breed,owner_name,is_health_pet').eq('user_id', session.user.id).eq('is_health_pet', false).maybeSingle()
-    if (petData) {
-      setPet(petData)
-    }
-    await fetchPosts(session.user.id)
-    const { data: others } = await supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,pet_breed,owner_name').neq('user_id', session.user.id).eq('is_health_pet', false).limit(6)
-    setSuggestions(others || [])
-    const { data: sReqs } = await supabase.from('friend_requests').select('receiver_id,status').eq('sender_id', session.user.id)
-    const { data: rReqs } = await supabase.from('friend_requests').select('sender_id,status').eq('receiver_id', session.user.id)
+    const userId = session.user.id
+
+    // Run all fetches in parallel for faster load
+    const [
+      petResult,
+      othersResult,
+      sReqsResult,
+      rReqsResult,
+    ] = await Promise.all([
+      supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,paw_coins,pet_breed,owner_name,is_health_pet').eq('user_id', userId).eq('is_health_pet', false).maybeSingle(),
+      supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,pet_breed,owner_name').neq('user_id', userId).eq('is_health_pet', false).limit(6),
+      supabase.from('friend_requests').select('receiver_id,status').eq('sender_id', userId),
+      supabase.from('friend_requests').select('sender_id,status').eq('receiver_id', userId),
+    ])
+
+    const petData = petResult.data
+    if (petData) setPet(petData)
+    setSuggestions(othersResult.data || [])
+
+    const sReqs = sReqsResult.data || []
+    const rReqs = rReqsResult.data || []
     const statuses = {}
-    ;(sReqs || []).forEach(r => { statuses[r.receiver_id] = r.status })
-    ;(rReqs || []).forEach(r => { statuses[r.sender_id] = r.status })
+    sReqs.forEach(r => { statuses[r.receiver_id] = r.status })
+    rReqs.forEach(r => { statuses[r.sender_id] = r.status })
     setFriendStatuses(statuses)
-    const fIds = [...(sReqs||[]).filter(r=>r.status==='accepted').map(r=>r.receiver_id), ...(rReqs||[]).filter(r=>r.status==='accepted').map(r=>r.sender_id)]
-    if (fIds.length > 0) { const { data: fp } = await supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,owner_name').in('user_id', fIds).eq('is_health_pet', false); setFriends(fp||[]) }
+
+    const fIds = [
+      ...sReqs.filter(r => r.status === 'accepted').map(r => r.receiver_id),
+      ...rReqs.filter(r => r.status === 'accepted').map(r => r.sender_id)
+    ]
+
+    // Fetch posts and friends in parallel
+    await Promise.all([
+      fetchPosts(userId),
+      fIds.length > 0
+        ? supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,owner_name').in('user_id', fIds).eq('is_health_pet', false).then(({ data: fp }) => setFriends(fp || []))
+        : Promise.resolve()
+    ])
+
     setLoading(false)
   }
 
@@ -533,6 +560,15 @@ export default function Feed() {
 
   if (loading) return <div className="feed-loading">🐾</div>
 
+  // Filter posts by active tag from URL
+  const displayedPosts = activeTagFilter
+    ? posts.filter(p => {
+        const text = (p.content || p.caption || '').toLowerCase()
+        const tags = p.hashtags || []
+        return text.includes(`#${activeTagFilter.toLowerCase()}`) || tags.includes(`#${activeTagFilter.toLowerCase()}`)
+      })
+    : posts
+
   return (
     <div className="feed-page">
       <NavBar user={user} pet={pet} />
@@ -734,15 +770,23 @@ export default function Feed() {
             <div className="feed-hashtag-hint">💡 Tip: Use #hashtags in your text to tag topics</div>
           </div>
 
-          {posts.length===0&&(
-            <div className="card feed-empty">
-              <div style={{fontSize:'3rem',marginBottom:10}}>🐾</div>
-              <div style={{fontFamily:"'Baloo 2',cursive",fontWeight:800,fontSize:'1.1rem'}}>No posts yet!</div>
-              <div style={{fontSize:'0.88rem',marginTop:4}}>Be the first to share your pet's story ❤️</div>
+          {activeTagFilter && (
+            <div style={{ background: '#F0EBFF', border: '1px solid #D8B4FE', borderRadius: 12, padding: '10px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontWeight: 700, color: '#6C4BF6', fontSize: '0.88rem' }}>🔍 Showing posts tagged: <strong>#{activeTagFilter}</strong></span>
+              <button onClick={() => router.push('/feed')} style={{ background: '#6C4BF6', color: '#fff', border: 'none', borderRadius: 8, padding: '4px 12px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'Nunito, sans-serif' }}>✕ Clear Filter</button>
             </div>
           )}
 
-          {posts.map(post=>{
+          {displayedPosts.length===0&&(
+            <div className="card feed-empty">
+              <div style={{fontSize:'3rem',marginBottom:10}}>🐾</div>
+              <div style={{fontFamily:"'Baloo 2',cursive",fontWeight:800,fontSize:'1.1rem'}}>{activeTagFilter ? `No posts with #${activeTagFilter}` : 'No posts yet!'}</div>
+              <div style={{fontSize:'0.88rem',marginTop:4}}>{activeTagFilter ? 'Try a different hashtag or clear the filter.' : 'Be the first to share your pet’s story ❤️'}</div>
+              {activeTagFilter && <button onClick={() => router.push('/feed')} style={{ marginTop: 12, padding: '8px 20px', borderRadius: 10, background: '#F0EBFF', color: '#6C4BF6', border: 'none', fontWeight: 700, cursor: 'pointer', fontFamily: 'Nunito, sans-serif' }}>← Show all posts</button>}
+            </div>
+          )}
+
+          {displayedPosts.map(post=>{
             const isMyPost=post.pets?.user_id===user?.id
             const comments=activeComments[post.id]
             return (

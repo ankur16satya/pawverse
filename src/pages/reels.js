@@ -42,6 +42,10 @@ export default function Reels() {
 
   const handlePostComment = async () => {
     if (!commentText.trim() || !commentsModal) return
+    if (!pet) {
+      alert('You need a pet profile to comment!')
+      return
+    }
     setSendingComment(true)
     const { data, error } = await supabase.from('comments').insert({
       post_id: commentsModal.id,
@@ -51,14 +55,22 @@ export default function Reels() {
     }).select('*, pets(pet_name, emoji, avatar_url, user_id)').single()
     
     if (error) {
-      console.error(error)
-      alert("Could not post comment: " + error.message)
+      console.error('Comment error:', error)
+      alert('Could not post comment: ' + (error.message || 'Unknown error'))
+      setSendingComment(false)
+      return
     }
 
     if (data) {
       setComments(prev => [...prev, data])
       setCommentText('')
-      setReels(prev => prev.map(r => r.id === commentsModal.id ? { ...r, comments_count: (r.comments_count || 0) + 1 } : r))
+      // Update comment count in reels list
+      setReels(prev => prev.map(r => r.id === commentsModal.id
+        ? { ...r, comments_count: (r.comments_count || 0) + 1 }
+        : r
+      ))
+      // Also update the commentsModal reference
+      setCommentsModal(prev => prev ? { ...prev, comments_count: (prev.comments_count || 0) + 1 } : prev)
 
       // ── SEND REAL BACKGROUND PUSH ──
       if (commentsModal.pets?.user_id && commentsModal.pets.user_id !== user.id) {
@@ -67,7 +79,7 @@ export default function Reels() {
           body: JSON.stringify({
             user_id: commentsModal.pets.user_id,
             title: `🎬 New Reel Comment!`,
-            body: `${pet?.pet_name} commented on your reel: "${commentText.trim().slice(0, 50)}..."`,
+            body: `${pet?.pet_name} commented on your reel: "${commentText.trim().slice(0, 50)}${commentText.trim().length > 50 ? '...' : ''}"`,
             url: `/post/${commentsModal.id}`
           })
         }).catch(e => console.error('Push failed:', e))
