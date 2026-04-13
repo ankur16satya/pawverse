@@ -20,9 +20,21 @@ export default function Profile() {
   const [avatarPreview, setAvatarPreview] = useState(null)
   const avatarInputRef = useRef(null)
 
+  const [creatingPet, setCreatingPet] = useState(false)
+  const [petForm, setPetForm] = useState({ owner_name: '', pet_name: '', pet_type: '🐶 Dog', pet_breed: '' })
+
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session }, error: sessionError }) => {
       if (!session) { router.push('/'); return }
+
+      // Check if this user still exists in auth (handles deleted accounts)
+      const { error: userError } = await supabase.auth.getUser()
+      if (userError || userError?.message?.includes('invalid')) {
+        await supabase.auth.signOut()
+        router.push('/')
+        return
+      }
+
       setUser(session.user)
 
       const fetchUserContent = (fetchPetId) => {
@@ -44,9 +56,10 @@ export default function Profile() {
         }
         setFriends(friendList)
       }
-      
+
       fetchFriends(session.user.id)
 
+      // Try to fetch existing pet
       const { data: existingPet } = await supabase.from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).maybeSingle()
 
       if (existingPet) {
@@ -56,28 +69,71 @@ export default function Profile() {
         setLoading(false)
         fetchUserContent(existingPet.id)
       } else {
+        // Try to auto-create from localStorage (set during signup)
         const pending = localStorage.getItem('pending_pet')
         if (pending) {
-          const petData = JSON.parse(pending)
-          const { data: newPet, error } = await supabase.from('pets').insert({
-            user_id: session.user.id,
-            ...petData,
-            paw_coins: 150,
-            bio: `Hi, I'm ${petData.pet_name}! 🐾`,
-            location: 'India',
-          }).select().single()
-
-          if (!error && newPet) {
-            localStorage.removeItem('pending_pet')
-            setPet(newPet)
-            setForm(newPet)
-            fetchUserContent(newPet.id)
-          }
+          try {
+            const petData = JSON.parse(pending)
+            const { data: newPet, error } = await supabase.from('pets').insert({
+              user_id: session.user.id,
+              owner_name: petData.owner_name,
+              pet_name: petData.pet_name,
+              pet_type: petData.pet_type,
+              pet_breed: petData.pet_breed,
+              emoji: petData.emoji || '🐾',
+              paw_coins: 150,
+              bio: `Hi, I'm ${petData.pet_name}! 🐾`,
+              location: 'India',
+              is_health_pet: false,
+            }).select().single()
+            if (!error && newPet) {
+              localStorage.removeItem('pending_pet')
+              setPet(newPet)
+              setForm(newPet)
+              fetchUserContent(newPet.id)
+              setLoading(false)
+              return
+            }
+          } catch(e) {}
         }
+        // Pre-fill form with any available info
+        const email = session.user.email || ''
+        setPetForm(prev => ({ ...prev, owner_name: email.split('@')[0] || '' }))
         setLoading(false)
       }
     })
   }, [])
+
+  const handleCreatePet = async () => {
+    if (!petForm.owner_name.trim() || !petForm.pet_name.trim()) {
+      alert('Please fill in your name and your pet\'s name!')
+      return
+    }
+    setCreatingPet(true)
+    const PET_EMOJIS = { '🐶 Dog':'🐶','🐱 Cat':'🐱','🐇 Rabbit':'🐇','🦜 Bird':'🦜','🐠 Fish':'🐠','🐹 Hamster':'🐹','🐍 Reptile':'🐍','🐢 Turtle':'🐢' }
+    const emoji = PET_EMOJIS[petForm.pet_type] || '🐾'
+    const { data: newPet, error } = await supabase.from('pets').insert({
+      user_id: user.id,
+      owner_name: petForm.owner_name,
+      pet_name: petForm.pet_name,
+      pet_type: petForm.pet_type,
+      pet_breed: petForm.pet_breed,
+      emoji,
+      paw_coins: 150,
+      bio: `Hi, I'm ${petForm.pet_name}! 🐾`,
+      location: 'India',
+      is_health_pet: false,
+    }).select().single()
+    if (error) {
+      alert('Could not create profile: ' + error.message)
+      setCreatingPet(false)
+      return
+    }
+    setPet(newPet)
+    setForm(newPet)
+    localStorage.removeItem('pending_pet')
+    setCreatingPet(false)
+  }
 
   // Handle avatar file selection & upload
   const handleAvatarChange = async (e) => {
@@ -144,14 +200,29 @@ export default function Profile() {
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontSize: '2rem',paddingTop:'50px' }}>🐾</div>
   )
 
+  const PET_TYPES = ['🐶 Dog','🐱 Cat','🐇 Rabbit','🦜 Bird','🐠 Fish','🐹 Hamster','🐍 Reptile','🐢 Turtle']
+
   if (!pet) return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: 12, textAlign: 'center', padding: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', gap: 12, textAlign: 'center', padding: 24, background: 'linear-gradient(135deg, #FFF0E8, #F0EBFF)' }}>
       <div style={{ fontSize: '3rem' }}>🐾</div>
-      <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.2rem', color: '#1E1347' }}>No pet profile found</div>
-      <p style={{ color: '#6B7280', fontSize: '0.88rem', maxWidth: 300 }}>Please sign out and sign up again!</p>
-      <button onClick={() => router.push('/')} style={{ background: 'linear-gradient(135deg,#FF6B35,#FF8C5A)', color: '#fff', border: 'none', borderRadius: 12, padding: '10px 22px', fontFamily: 'Nunito, sans-serif', fontWeight: 800, cursor: 'pointer', fontSize: '0.95rem' }}>
-        Go to Sign Up 🐾
-      </button>
+      <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.3rem', color: '#1E1347' }}>Complete Your Profile</div>
+      <p style={{ color: '#6B7280', fontSize: '0.88rem', maxWidth: 320, margin: 0 }}>Your pet profile wasn't saved during signup. Fill in the details below to get started!</p>
+      <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 400, textAlign: 'left', boxShadow: '0 4px 24px rgba(108,75,246,0.1)' }}>
+        <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>Your Name</label>
+        <input value={petForm.owner_name} onChange={e => setPetForm(p => ({...p, owner_name: e.target.value}))} placeholder="e.g. Priya Sharma" style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1.5px solid #EDE8FF', fontFamily: 'Nunito, sans-serif', fontSize: '0.88rem', boxSizing: 'border-box', outline: 'none', marginBottom: 12 }} />
+        <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>Pet's Name 🐾</label>
+        <input value={petForm.pet_name} onChange={e => setPetForm(p => ({...p, pet_name: e.target.value}))} placeholder="e.g. Whiskers" style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1.5px solid #EDE8FF', fontFamily: 'Nunito, sans-serif', fontSize: '0.88rem', boxSizing: 'border-box', outline: 'none', marginBottom: 12 }} />
+        <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>Pet Type</label>
+        <select value={petForm.pet_type} onChange={e => setPetForm(p => ({...p, pet_type: e.target.value}))} style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1.5px solid #EDE8FF', fontFamily: 'Nunito, sans-serif', fontSize: '0.88rem', boxSizing: 'border-box', outline: 'none', marginBottom: 12 }}>
+          {PET_TYPES.map(t => <option key={t}>{t}</option>)}
+        </select>
+        <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>Breed (optional)</label>
+        <input value={petForm.pet_breed} onChange={e => setPetForm(p => ({...p, pet_breed: e.target.value}))} placeholder="e.g. Persian, Labrador..." style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1.5px solid #EDE8FF', fontFamily: 'Nunito, sans-serif', fontSize: '0.88rem', boxSizing: 'border-box', outline: 'none', marginBottom: 16 }} />
+        <button onClick={handleCreatePet} disabled={creatingPet} style={{ width: '100%', padding: 13, background: 'linear-gradient(135deg, #FF6B35, #6C4BF6)', color: '#fff', border: 'none', borderRadius: 12, fontFamily: 'Nunito, sans-serif', fontWeight: 800, fontSize: '0.95rem', cursor: creatingPet ? 'not-allowed' : 'pointer' }}>
+          {creatingPet ? 'Creating...' : '🐾 Create My Pet Profile'}
+        </button>
+        <button onClick={async () => { await supabase.auth.signOut(); router.push('/') }} style={{ width: '100%', marginTop: 10, padding: 10, background: 'transparent', color: '#9CA3AF', border: 'none', fontFamily: 'Nunito, sans-serif', fontSize: '0.82rem', cursor: 'pointer' }}>Sign out instead</button>
+      </div>
     </div>
   )
 
