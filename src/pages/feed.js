@@ -17,6 +17,9 @@ export default function Feed() {
   const [postText, setPostText] = useState('')
   const [posting, setPosting] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(true)
+  const [lastTimestamp, setLastTimestamp] = useState(null)
   const [suggestions, setSuggestions] = useState([])
   const [selectedImage, setSelectedImage] = useState(null)
   const [selectedVideo, setSelectedVideo] = useState(null)
@@ -107,12 +110,16 @@ export default function Feed() {
     feedObserver.current = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
         if (entry.isIntersecting) {
-          setActiveFeedPostId(entry.target.getAttribute('data-post-id'))
+          if (entry.target.id === 'infinite-scroll-trigger') {
+            loadMore()
+          } else {
+            setActiveFeedPostId(entry.target.getAttribute('data-post-id'))
+          }
         }
       })
-    }, { threshold: 0.6 })
+    }, { threshold: 0.1 })
     return () => { if (feedObserver.current) feedObserver.current.disconnect() }
-  }, [])
+  }, [hasMore, loadingMore, lastTimestamp])
 
   useEffect(() => {
     Object.entries(feedAudioRefs.current).forEach(([id, aud]) => {
@@ -191,23 +198,62 @@ export default function Feed() {
     setLoading(false)
   }
 
-  const fetchPosts = async (userId) => {
+  const fetchPosts = async (userId, isAppending = false) => {
     const currentUserId = userId || user?.id
-    const { data: pD } = await supabase.from('posts').select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id)').order('created_at',{ascending:false}).limit(20)
-    const { data: rD } = await supabase.from('reels').select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id)').order('created_at',{ascending:false}).limit(20)
+    const FETCH_LIMIT = 20
     
-    const pD_typed = (pD||[]).map(p => ({...p, type: 'post'}))
-    const rD_typed = (rD||[]).map(r => ({...r, type: 'reel'}))
+    let postQuery = supabase.from('posts').select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id), comments(count)').order('created_at', { ascending: false }).limit(FETCH_LIMIT)
+    let reelQuery = supabase.from('reels').select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id), comments(count)').order('created_at', { ascending: false }).limit(FETCH_LIMIT)
+
+    if (isAppending && lastTimestamp) {
+      postQuery = postQuery.lt('created_at', lastTimestamp)
+      reelQuery = reelQuery.lt('created_at', lastTimestamp)
+    }
+
+    const { data: pD } = await postQuery
+    const { data: rD } = await reelQuery
+
+    const pD_typed = (pD || []).map(p => ({
+      ...p,
+      type: 'post',
+      comments_count: p.comments?.[0]?.count || 0
+    }))
+    const rD_typed = (rD || []).map(r => ({
+      ...r,
+      type: 'reel',
+      comments_count: r.comments?.[0]?.count || 0
+    }))
     
-    const mixed = [...pD_typed,...rD_typed].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,20)
+    const mixed = [...pD_typed,...rD_typed].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,FETCH_LIMIT)
+    
+    if (mixed.length < FETCH_LIMIT) {
+      setHasMore(false)
+    }
+
+    if (mixed.length > 0) {
+      setLastTimestamp(mixed[mixed.length - 1].created_at)
+    }
+
     const hidden = JSON.parse(localStorage.getItem('hidden_posts')||'[]')
-    
     const savedLikes = JSON.parse(localStorage.getItem(`pawverse_likes_${currentUserId}`) || '{}')
     
-    setPosts(mixed.filter(p=>!hidden.includes(p.id)).map(p => ({
+    const newPosts = mixed.filter(p=>!hidden.includes(p.id)).map(p => ({
       ...p,
       liked_by_me: !!savedLikes[p.id]
-    })))
+    }))
+
+    if (isAppending) {
+      setPosts(prev => [...prev, ...newPosts])
+    } else {
+      setPosts(newPosts)
+    }
+  }
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore) return
+    setLoadingMore(true)
+    await fetchPosts(user?.id, true)
+    setLoadingMore(false)
   }
 
   const fetchComments = async (postId) => {
@@ -217,6 +263,9 @@ export default function Feed() {
       return {...c, replies: rep||[]}
     }))
     setActiveComments(prev=>({...prev,[postId]:withReplies}))
+    // Update post's comment count with real count from DB
+    const totalCount = withReplies.reduce((sum, c) => sum + 1 + (c.replies?.length || 0), 0)
+    setPosts(prev=>prev.map(p=>p.id===postId?{...p,comments_count:totalCount}:p))
   }
 
   const toggleComments = async (postId) => {
@@ -227,8 +276,16 @@ export default function Feed() {
   const handleComment = async (postId, parentId=null) => {
     const key = parentId||postId
     const text = commentTexts[key]?.trim()
-    if (!text||!pet) return
-    const { data: nc, error } = await supabase.from('comments').insert({ post_id:postId, pet_id:pet.id, user_id:user.id, content:text, parent_id:parentId||null }).select('*, pets(pet_name, emoji, avatar_url, user_id)').single()
+    if (!text) return
+    
+    let currentPet = pet
+    if (!currentPet) {
+      const { data: pD } = await supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,paw_coins').eq('user_id', user.id).eq('is_health_pet', false).maybeSingle()
+      if (pD) { currentPet = pD; setPet(pD) }
+      else { alert('Please set up your pet profile first!'); return }
+    }
+    
+    const { data: nc, error } = await supabase.from('comments').insert({ post_id:postId, pet_id:currentPet.id, user_id:user.id, content:text, parent_id:parentId||null }).select('*, pets(pet_name, emoji, avatar_url, user_id)').single()
     if (error||!nc) return
     setCommentTexts(prev=>({...prev,[key]:''}))
     setReplyTo(prev=>({...prev,[postId]:null}))
@@ -245,7 +302,7 @@ export default function Feed() {
         body: JSON.stringify({
           user_id: post.pets.user_id,
           title: '💬 New Comment!',
-          body: `${pet.pet_name} commented on your post: "${text.slice(0,50)}..."`,
+          body: `${currentPet.pet_name} commented on your post: "${text.slice(0,50)}..."`,
           url: `/post/${post.id}`
         })
       }).catch(e => console.error('Push failed:', e))
@@ -858,11 +915,11 @@ export default function Feed() {
                   (post.content||post.caption)&&(
                     <div className="feed-post-content">
                       <p className="feed-post-text">
-                        {(post.content||post.caption).split(/(\s+)/).map((word,i)=>
-                          word.startsWith('#')
-                            ?<span key={i} className="feed-hashtag" onClick={()=>router.push(`/feed?tag=${word.slice(1)}`)}>{word}</span>
-                            :word
-                        )}
+                        {(post.content||post.caption).split(/(\s+)/).map((word,i)=>{
+                          if (word.startsWith('#')) return <span key={i} className="feed-hashtag" onClick={()=>router.push(`/feed?tag=${word.slice(1)}`)}>{word}</span>
+                          if (/^https?:\/\/[^\s]+$/.test(word)) return <a key={i} href={word} target="_blank" rel="noopener noreferrer" style={{color:'#6C4BF6',fontWeight:700,wordBreak:'break-all',textDecoration:'underline'}}>{word}</a>
+                          return word
+                        })}
                       </p>
                       {(post.location||post.feeling)&&(
                         <div className="feed-post-tags">
@@ -898,7 +955,9 @@ export default function Feed() {
                 <div className="feed-post-stats">
                   <span>❤️ {post.likes||0} paws</span>
                   <div style={{display:'flex',gap:10}}>
-                    <span className="feed-stats-link" onClick={()=>toggleComments(post.id)}>💬 {post.comments_count||0}</span>
+                    <span className="feed-stats-link" onClick={()=>toggleComments(post.id)}>
+                      💬 {activeComments[post.id] !== undefined ? activeComments[post.id].length : (post.comments_count||0)}
+                    </span>
                     <span>🔗 {post.shares_count||0}</span>
                   </div>
                 </div>
@@ -923,7 +982,7 @@ export default function Feed() {
                         className="feed-comment-input"
                         value={commentTexts[post.id]||''}
                         onChange={e=>setCommentTexts(prev=>({...prev,[post.id]:e.target.value}))}
-                        onKeyDown={e=>{if(e.key==='Enter')handleComment(post.id)}}
+                        onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&e.ctrlKey)handleComment(post.id)}}
                         placeholder="Write a comment..."
                       />
                       <button className="feed-comment-send" onClick={()=>handleComment(post.id)} disabled={!commentTexts[post.id]?.trim()}>Send</button>
@@ -956,7 +1015,7 @@ export default function Feed() {
                                 className="feed-comment-input"
                                 value={commentTexts[comment.id]||''}
                                 onChange={e=>setCommentTexts(prev=>({...prev,[comment.id]:e.target.value}))}
-                                onKeyDown={e=>{if(e.key==='Enter')handleComment(post.id,comment.id)}}
+                                onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&e.ctrlKey)handleComment(post.id,comment.id)}}
                                 placeholder={`Reply to ${comment.pets?.pet_name}...`}
                               />
                               <button className="feed-comment-send small" onClick={()=>handleComment(post.id,comment.id)} disabled={!commentTexts[comment.id]?.trim()}>Reply</button>
@@ -984,6 +1043,17 @@ export default function Feed() {
               </div>
             )
           })}
+
+          {hasMore && (
+            <div id="infinite-scroll-trigger" ref={el => { if (el && feedObserver.current) feedObserver.current.observe(el) }} style={{ padding: '20px', textAlign: 'center', color: '#6C4BF6', fontSize: '1.2rem' }}>
+              {loadingMore ? '🐾 Loading more...' : 'Scroll for more paws...'}
+            </div>
+          )}
+          {!hasMore && posts.length > 0 && (
+            <div style={{ padding: '40px 20px', textAlign: 'center', color: '#9CA3AF', fontSize: '0.9rem' }}>
+              ✨ You've reached the end of the universe! 🐾
+            </div>
+          )}
         </main>
 
         {/* RIGHT SIDEBAR */}

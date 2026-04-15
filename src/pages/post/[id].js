@@ -213,11 +213,11 @@ export default function PostPage() {
           {/* Content */}
           {(post.content || post.caption) && (
             <p style={{ fontSize: '1rem', lineHeight: 1.7, color: '#1E1347', marginBottom: 12 }}>
-              {(post.content || post.caption).split(/(\s+)/).map((word, i) =>
-                word.startsWith('#')
-                  ? <span key={i} style={{ color: '#6C4BF6', fontWeight: 700 }}>{word}</span>
-                  : word
-              )}
+              {(post.content || post.caption).split(/(\s+)/).map((word, i) => {
+                if (word.startsWith('#')) return <span key={i} style={{ color: '#6C4BF6', fontWeight: 700 }}>{word}</span>
+                if (/^https?:\/\/[^\s]+$/.test(word)) return <a key={i} href={word} target="_blank" rel="noopener noreferrer" style={{color:'#6C4BF6',fontWeight:700,wordBreak:'break-all',textDecoration:'underline'}}>{word}</a>
+                return word
+              })}
             </p>
           )}
 
@@ -274,7 +274,7 @@ export default function PostPage() {
               <input
                 value={commentText}
                 onChange={e => setCommentText(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleComment()}
+                onKeyDown={e => e.key === 'Enter' && e.ctrlKey && handleComment()}
                 placeholder="Write a comment..."
                 style={{ flex: 1, padding: '9px 14px', borderRadius: 20, border: '1.5px solid #EDE8FF', fontFamily: 'Nunito, sans-serif', fontSize: '0.85rem', outline: 'none' }}
               />

@@ -10,6 +10,7 @@ export default function UserProfile() {
   const [pet, setPet] = useState(null)
   const [profilePet, setProfilePet] = useState(null)
   const [posts, setPosts] = useState(null)
+  const [reels, setReels] = useState(null)
   const [friends, setFriends] = useState([])
   const [images, setImages] = useState([])
   const [tab, setTab] = useState('posts')
@@ -48,23 +49,40 @@ const { data: targetPet } = await supabase
   .single()
 
 // Get posts using pet_id
-if (targetPet) {
-  const { data: postsData } = await supabase
-    .from('posts')
-    .select('*, pets(pet_name, emoji, avatar_url, owner_name, user_id)')
-    .eq('pet_id', targetPet.id)
-    .eq('hidden', false)
-    .order('created_at', { ascending: false })
+  if (targetPet) {
+    const { data: postsData } = await supabase
+      .from('posts')
+      .select('*, pets(pet_name, emoji, avatar_url, owner_name, user_id), comments(count)')
+      .eq('pet_id', targetPet.id)
+      .eq('hidden', false)
+      .order('created_at', { ascending: false })
 
-  setPosts(postsData || [])
+    setPosts((postsData || []).map(p => ({
+      ...p,
+      comments_count: p.comments?.[0]?.count || 0
+    })))
 
-  // Get images from posts
-  const imgs = (postsData || []).filter(p => p.image_url).map(p => p.image_url)
-  setImages(imgs)
-} else {
-  setPosts([])
-  setImages([])
-}
+    // Get images from posts
+    const imgs = (postsData || []).filter(p => p.image_url).map(p => p.image_url)
+    setImages(imgs)
+
+    // Get reels using pet_id
+    const { data: reelsData } = await supabase
+      .from('reels')
+      .select('*, pets(pet_name, emoji, avatar_url, owner_name, user_id), comments(count)')
+      .eq('pet_id', targetPet.id)
+      .order('created_at', { ascending: false })
+      .limit(100)
+
+    setReels((reelsData || []).map(r => ({
+      ...r,
+      comments_count: r.comments?.[0]?.count || 0
+    })))
+  } else {
+    setPosts([])
+    setReels([])
+    setImages([])
+  }
 
 // Get friends of this profile — fixed query
 const { data: sentFriends } = await supabase
@@ -256,7 +274,7 @@ setFriends(friendList)
 
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               {/* Stats */}
-              {[['Posts', posts?.length || 0], ['Friends', friends.length]].map(([l, v]) => (
+              {[['Posts', posts?.length || 0], ['Reels', reels?.length || 0], ['Friends', friends.length]].map(([l, v]) => (
                 <div key={l} style={{ textAlign: 'center', padding: '6px 14px', background: '#F9F5FF', borderRadius: 10 }}>
                   <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, color: '#FF6B35', fontSize: '1.1rem' }}>{v}</div>
                   <div style={{ fontSize: '0.7rem', color: '#6B7280' }}>{l}</div>
@@ -285,7 +303,7 @@ setFriends(friendList)
 
           {/* Tabs */}
           <div style={{ display: 'flex', borderBottom: '2px solid #EDE8FF', marginBottom: 16 }}>
-            {['posts', 'friends', 'photos', 'about'].map(t => (
+            {['posts', 'reels', 'friends', 'photos', 'about'].map(t => (
               <button key={t} onClick={() => setTab(t)}
                 style={{
                   padding: '9px 16px', border: 'none', background: 'transparent',
@@ -329,6 +347,41 @@ setFriends(friendList)
                   <div style={{ marginTop: 8, fontSize: '0.78rem', color: '#6B7280', display: 'flex', gap: 12 }}>
                     <span>❤️ {p.likes || 0} paws</span>
                     <span>💬 {p.comments_count || 0} comments</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Reels Tab */}
+          {tab === 'reels' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {!reels || reels.length === 0 ? (
+                <div className="card" style={{ textAlign: 'center', padding: 30, color: '#6B7280' }}>
+                  No reels yet 🎬
+                </div>
+              ) : reels.map(r => (
+                <div key={r.id} className="card">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#FFE8F0', border: '2px solid #FF6B35', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', overflow: 'hidden' }}>
+                      {profilePet.avatar_url
+                        ? <img src={profilePet.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : profilePet.emoji || '🐾'}
+                    </div>
+                    <div>
+                      <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 700 }}>{profilePet.pet_name}</div>
+                      <div style={{ fontSize: '0.72rem', color: '#6B7280' }}>{timeAgo(r.created_at)}</div>
+                    </div>
+                  </div>
+                  {r.caption && <p style={{ fontSize: '0.9rem', lineHeight: 1.65, marginBottom: 8 }}>{r.caption}</p>}
+                  
+                  <div style={{ borderRadius: 12, overflow: 'hidden', background: '#111', display: 'flex', justifyContent: 'center' }}>
+                    <video src={r.video_url} autoPlay muted loop playsInline controls style={{ width: '100%', maxHeight: 400, objectFit: 'contain' }} />
+                  </div>
+
+                  <div style={{ marginTop: 8, fontSize: '0.78rem', color: '#6B7280', display: 'flex', gap: 12 }}>
+                    <span>❤️ {r.likes || 0} paws</span>
+                    <span>💬 {r.comments_count || 0} comments</span>
                   </div>
                 </div>
               ))}

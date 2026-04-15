@@ -1,56 +1,31 @@
-self.addEventListener('install', (event) => {
-  self.skipWaiting();
+/* ── SERVICE WORKER SUICIDE SCRIPT ── */
+/* This script is used to break infinite reload loops caused by development caching. */
+
+self.addEventListener('install', () => {
+  self.skipWaiting(); // Immediately activate the new worker
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
-});
-
-// ── BACKGROUND PUSH LISTENER ──
-self.addEventListener('push', (event) => {
-  if (!event.data) return;
-  
-  try {
-    const data = event.data.json();
-    const options = {
-      body: data.body || 'New update from Pawverse!',
-      icon: data.icon || '/logo.png',
-      badge: '/logo.png',
-      vibrate: [200, 100, 200],
-      data: {
-        url: data.url || '/'
-      },
-      actions: [
-        { action: 'open', title: 'View Now' }
-      ]
-    };
-
-    event.waitUntil(
-      self.registration.showNotification(data.title || '🐾 Pawverse', options)
-    );
-  } catch (e) {
-    console.error('Push error:', e);
-  }
-});
-
-// ── NOTIFICATION CLICK LISTENER ──
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-  const urlToOpen = event.notification.data.url || '/';
-
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      // If a window is already open, focus it
-      for (let i = 0; i < windowClients.length; i++) {
-        const client = windowClients[i];
-        if (client.url === urlToOpen && 'focus' in client) {
-          return client.focus();
+    (async () => {
+      // 1. Unregister this service worker
+      await self.registration.unregister();
+      
+      // 2. Clear all browser caches for this site
+      if (self.caches) {
+        const names = await caches.keys();
+        await Promise.all(names.map(name => caches.delete(name)));
+      }
+      
+      // 3. Force-reload all open windows to get fresh content from server
+      const windows = await self.clients.matchAll({ type: 'window' });
+      for (const client of windows) {
+        if (client.url && 'navigate' in client) {
+          client.navigate(client.url);
         }
       }
-      // Otherwise open a new window
-      if (clients.openWindow) {
-        return clients.openWindow(urlToOpen);
-      }
-    })
+      
+      console.log('✅ Service Worker and Caches cleared.');
+    })()
   );
 });

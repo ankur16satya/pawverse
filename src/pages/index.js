@@ -10,8 +10,11 @@ export default function Home() {
   const router = useRouter()
   const [mode, setMode] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [authChecking, setAuthChecking] = useState(true)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [unconfirmedEmail, setUnconfirmedEmail] = useState('')
+  const [resendLoading, setResendLoading] = useState(false)
 
   const [ownerName, setOwnerName] = useState('')
   const [nameSuggestions, setNameSuggestions] = useState([])
@@ -34,23 +37,26 @@ export default function Home() {
 
     if (hash.includes('type=recovery') || params.get('mode') === 'reset_password') {
       setMode('update_password')
+      setAuthChecking(false)
+      return
     }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        const currentHash = window.location.hash
-        const currentParams = new URLSearchParams(window.location.search)
-        if (!currentHash.includes('type=recovery') && currentParams.get('mode') !== 'reset_password') {
-          router.push('/feed')
-        }
+        // Small delay so page renders before redirect — prevents blank flash
+        setTimeout(() => router.push('/feed'), 100)
+      } else {
+        setAuthChecking(false)
       }
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') {
         setMode('update_password')
+        setAuthChecking(false)
       } else if (event === 'SIGNED_IN' && window.location.hash.includes('type=recovery')) {
         setMode('update_password')
+        setAuthChecking(false)
       }
     })
     return () => subscription.unsubscribe()
@@ -60,7 +66,6 @@ export default function Home() {
     e.preventDefault()
     setError(''); setLoading(true)
     try {
-      // Sign up without email verification
       const { data, error: authErr } = await supabase.auth.signUp({
         email,
         password,
@@ -71,7 +76,6 @@ export default function Home() {
       const userId = data?.user?.id
       if (!userId) throw new Error('Signup failed — please try again.')
 
-      // Save pet details to localStorage as fallback
       const emoji = PET_EMOJIS[petType] || '🐾'
       localStorage.setItem('pending_pet', JSON.stringify({
         owner_name: ownerName,
@@ -81,7 +85,6 @@ export default function Home() {
         emoji,
       }))
 
-      // Save pet profile to DB immediately
       await supabase.from('pets').insert({
         user_id: userId,
         owner_name: ownerName,
@@ -95,16 +98,13 @@ export default function Home() {
         is_health_pet: false,
       })
 
-      // Auto-login immediately — no email verification needed
       const { error: loginErr } = await supabase.auth.signInWithPassword({ email, password })
       if (loginErr) {
-        // If auto-login fails, show success and let them manually log in
         setSuccess('🎉 Account created! You can now sign in.')
         setMode('login')
         return
       }
 
-      // Redirect directly to feed
       router.push('/feed')
     } catch (err) {
       setError(err.message)
@@ -162,20 +162,72 @@ export default function Home() {
     }
   }
 
+  const handleResendConfirmation = async () => {
+    if (!unconfirmedEmail) return
+    setResendLoading(true)
+    try {
+      const { error } = await supabase.auth.resend({ type: 'signup', email: unconfirmedEmail })
+      if (error) throw error
+      setSuccess('📧 Confirmation email resent! Please check your inbox (and spam folder).')
+      setError('')
+      setUnconfirmedEmail('')
+    } catch (err) {
+      setError('Could not resend email: ' + err.message)
+    } finally {
+      setResendLoading(false)
+    }
+  }
+
   const handleLogin = async (e) => {
     e.preventDefault()
-    setError(''); setLoading(true)
+    setError(''); setUnconfirmedEmail(''); setLoading(true)
     try {
-      const { error: authErr } = await supabase.auth.signInWithPassword({
-        email: loginEmail, password: loginPassword
+      const { data, error: authErr } = await supabase.auth.signInWithPassword({
+        email: loginEmail.trim().toLowerCase(),
+        password: loginPassword
       })
-      if (authErr) throw authErr
+      if (authErr) {
+        // Email not confirmed — very common issue, handle gracefully
+        const msg = authErr.message || ''
+        if (
+          msg.toLowerCase().includes('email not confirmed') ||
+          msg.toLowerCase().includes('email_not_confirmed') ||
+          msg.toLowerCase().includes('not confirmed')
+        ) {
+          setUnconfirmedEmail(loginEmail.trim().toLowerCase())
+          setError('Your email is not confirmed yet. Check your inbox for a confirmation link, or resend it below.')
+          setLoading(false)
+          return
+        }
+        // Invalid credentials — give a friendlier message
+        if (
+          msg.toLowerCase().includes('invalid login') ||
+          msg.toLowerCase().includes('invalid credentials') ||
+          msg.toLowerCase().includes('wrong password') ||
+          msg.toLowerCase().includes('user not found')
+        ) {
+          setError('❌ Incorrect email or password. Please check and try again, or use "Forgot Password" to reset.')
+          setLoading(false)
+          return
+        }
+        throw authErr
+      }
       router.push('/feed')
     } catch (err) {
       setError(err.message)
     } finally {
       setLoading(false)
     }
+  }
+
+  // Show a minimal loading state while checking auth — prevents blank page flash
+  if (authChecking) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #FFF0E8 0%, #F0EBFF 50%, #E8F8FF 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12 }}>
+        <div style={{ fontSize: '3.5rem', animation: 'pulse 1.2s infinite' }}>🐾</div>
+        <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.5rem', background: 'linear-gradient(135deg, #FF6B35, #6C4BF6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>PawVerse</div>
+      </div>
+    )
   }
 
   return (
@@ -257,6 +309,16 @@ export default function Home() {
           <div className="card" style={{ marginTop: 16, textAlign: 'left' }}>
             <h2 style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.35rem', textAlign: 'center', marginBottom: 16 }}>Welcome Back 🐾</h2>
             {error && <div style={{ background: '#FFDCE0', color: '#FF4757', padding: '8px 12px', borderRadius: 8, fontSize: '0.82rem', marginBottom: 8 }}>{error}</div>}
+            {unconfirmedEmail && (
+              <div style={{ background: '#FFF8E1', border: '1px solid #FFC107', padding: '10px 12px', borderRadius: 8, fontSize: '0.82rem', marginBottom: 8 }}>
+                <div style={{ fontWeight: 700, color: '#92400E', marginBottom: 6 }}>📧 Email not confirmed yet</div>
+                <div style={{ color: '#78350F', marginBottom: 8 }}>Didn't get the email? We can resend it to <strong>{unconfirmedEmail}</strong></div>
+                <button type="button" onClick={handleResendConfirmation} disabled={resendLoading}
+                  style={{ background: '#FF6B35', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontFamily: 'Nunito, sans-serif', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}>
+                  {resendLoading ? 'Sending...' : '📨 Resend Confirmation Email'}
+                </button>
+              </div>
+            )}
             {success && <div style={{ background: '#E8F8E8', color: '#22C55E', padding: '8px 12px', borderRadius: 8, fontSize: '0.82rem', marginBottom: 8 }}>{success}</div>}
             <form onSubmit={handleLogin}>
               <label className="label">Email</label>

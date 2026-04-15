@@ -38,8 +38,12 @@ export default function Profile() {
       setUser(session.user)
 
       const fetchUserContent = (fetchPetId) => {
-        supabase.from('posts').select('*').eq('pet_id', fetchPetId).order('created_at', { ascending: false }).limit(20).then(({ data }) => setPosts(data || []))
-        supabase.from('reels').select('*').eq('pet_id', fetchPetId).order('created_at', { ascending: false }).limit(20).then(({ data }) => setReels(data || []))
+        supabase.from('posts').select('*, comments(count)').eq('pet_id', fetchPetId).order('created_at', { ascending: false }).limit(100).then(({ data }) => {
+          setPosts((data || []).map(p => ({ ...p, comments_count: p.comments?.[0]?.count || 0 })))
+        })
+        supabase.from('reels').select('*, comments(count)').eq('pet_id', fetchPetId).order('created_at', { ascending: false }).limit(100).then(({ data }) => {
+          setReels((data || []).map(r => ({ ...r, comments_count: r.comments?.[0]?.count || 0 })))
+        })
       }
 
       const fetchFriends = async (userId) => {
@@ -427,6 +431,9 @@ export default function Profile() {
                   {saving ? 'Saving...' : 'Save Changes'}
                 </button>
                 <button className="btn-secondary" onClick={() => setEditing(false)}>Cancel</button>
+                <button className="btn-secondary" style={{ color: '#EF4444', marginLeft: 'auto' }} onClick={() => { if(confirm('Show all posts you have hidden?')){ localStorage.removeItem('hidden_posts'); window.location.reload(); } }}>
+                  Reset Hidden Posts
+                </button>
               </div>
             </div>
           )}
@@ -488,7 +495,10 @@ export default function Profile() {
                     </div>
                   )}
 
-                  <div style={{ marginTop: 8, fontSize: '0.78rem', color: '#6B7280' }}>❤️ {p.likes || 0} paws</div>
+                  <div style={{ marginTop: 8, fontSize: '0.78rem', color: '#6B7280', display: 'flex', gap: 12 }}>
+                    <span>❤️ {p.likes || 0} paws</span>
+                    <span>💬 {p.comments_count || 0} comments</span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -525,7 +535,10 @@ export default function Profile() {
                     <video src={r.video_url} autoPlay muted loop playsInline controls style={{ width: '100%', maxHeight: 400, objectFit: 'contain' }} />
                   </div>
 
-                  <div style={{ marginTop: 8, fontSize: '0.78rem', color: '#6B7280' }}>❤️ {r.likes || 0} paws</div>
+                  <div style={{ marginTop: 8, fontSize: '0.78rem', color: '#6B7280', display: 'flex', gap: 12 }}>
+                    <span>❤️ {r.likes || 0} paws</span>
+                    <span>💬 {r.comments_count || 0} comments</span>
+                  </div>
                 </div>
               ))}
             </div>

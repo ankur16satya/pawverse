@@ -170,11 +170,14 @@ export default function Reels() {
   const fetchReels = async () => {
     const { data, error } = await supabase
       .from('reels')
-      .select('*, pets(pet_name, emoji, owner_name, avatar_url, user_id)')
+      .select('*, pets(pet_name, emoji, owner_name, avatar_url, user_id), comments(count)')
       .order('created_at', { ascending: false })
       .limit(30)
     if (error) console.error('fetchReels error:', error)
-    setReels(data || [])
+    setReels((data || []).map(r => ({
+      ...r,
+      comments_count: r.comments?.[0]?.count || 0
+    })))
   }
 
   const playSound = (type) => {
@@ -537,7 +540,7 @@ export default function Reels() {
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
                       <button onClick={() => openComments(reel)} style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', border: 'none', borderRadius: '50%', width: 48, height: 48, fontSize: '1.3rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>💬</button>
-                      <span style={{ color: '#fff', fontSize: '0.7rem', fontWeight: 700 }}>Comment</span>
+                      <span style={{ color: '#fff', fontSize: '0.7rem', fontWeight: 700 }}>{reel.comments_count || 0}</span>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
                       <button onClick={() => setShareModal(reel)} style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', border: 'none', borderRadius: '50%', width: 48, height: 48, fontSize: '1.3rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🔗</button>

@@ -5,15 +5,33 @@ import '../styles/responsive-patch.css'
 
 export default function App({ Component, pageProps }) {
   useEffect(() => {
+    // ── HARDENED SERVICE WORKER REMOVAL (DEV MODE) ──
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').then(reg => {
-          console.log('✅ SW Registered:', reg.scope)
-          reg.update()
-        }).catch(err => {
-          console.error('❌ SW Registration Failed:', err)
+      if (process.env.NODE_ENV === 'development') {
+        navigator.serviceWorker.getRegistrations().then(registrations => {
+          for (let registration of registrations) {
+            registration.unregister().then(() => {
+              console.log('🗑️ SW Unregistered for Development');
+            });
+          }
+        });
+        
+        // Also clear any caches the SW might have created
+        if (window.caches) {
+          caches.keys().then(names => {
+            for (let name of names) caches.delete(name);
+          });
+        }
+      } else {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').then(reg => {
+            console.log('✅ SW Registered:', reg.scope)
+            reg.update()
+          }).catch(err => {
+            console.error('❌ SW Registration Failed:', err)
+          })
         })
-      })
+      }
     }
   }, [])
 
