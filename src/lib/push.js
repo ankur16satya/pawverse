@@ -28,16 +28,18 @@ export const subscribeUserToPush = async (user) => {
 
     // Force clear any old subscription (important for VAPID key changes)
     const existingSub = await registration.pushManager.getSubscription();
-    if (existingSub) {
-      console.log('🔄 Cleaning old push subscription...');
-      await existingSub.unsubscribe();
+    let subscription = existingSub;
+    if (!existingSub) {
+      console.log('📡 Registering new background push...');
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      });
+    } else {
+      console.log('🔄 Push subscription already exists, keeping it.');
     }
 
-    console.log('📡 Registering new background push...');
-    const subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-    });
+
     
     // Save/Update subscription in database
     const { error } = await supabase.from('push_subscriptions').upsert({

@@ -729,16 +729,18 @@ export default function Chat() {
                 {isMobile && (
                   <button onClick={() => setActiveConv(null)} style={{ background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer', color: '#1E1347', marginRight: 4 }}>←</button>
                 )}
-                <div style={{
+                <div 
+                  onClick={() => router.push(`/user/${activeFriend?.user_id}`)} 
+                  style={{
                   width: 42, height: 42, borderRadius: '50%', background: '#FFE8F0',
                   border: '2px solid #FF6B35', display: 'flex', alignItems: 'center',
-                  justifyContent: 'center', fontSize: '1.3rem', overflow: 'hidden'
+                  justifyContent: 'center', fontSize: '1.3rem', overflow: 'hidden', cursor: 'pointer'
                 }}>
                   {activeFriend?.avatar_url
                     ? <img src={activeFriend.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     : activeFriend?.emoji || '🐾'}
                 </div>
-                <div>
+                <div onClick={() => router.push(`/user/${activeFriend?.user_id}`)} style={{cursor: 'pointer'}}>
                   <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1rem', color: '#1E1347' }}>
                     {activeFriend?.pet_name}
                   </div>

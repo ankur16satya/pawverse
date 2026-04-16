@@ -1,31 +1,50 @@
-/* ── SERVICE WORKER SUICIDE SCRIPT ── */
-/* This script is used to break infinite reload loops caused by development caching. */
+self.addEventListener('push', function(event) {
+  let payload = { title: 'PawVerse', body: 'New notification', icon: '/logo.png', url: '/' };
+  try {
+    if (event.data) {
+      payload = event.data.json();
+    }
+  } catch (e) {
+    if (event.data) {
+      payload.body = event.data.text();
+    }
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: payload.icon,
+      data: { url: payload.url },
+      vibrate: [200, 100, 200]
+    })
+  );
+});
+
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close();
+  const urlToOpen = event.notification.data?.url || '/';
+  
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
+      // Check if there is already a window/tab open with the target URL
+      for (let i = 0; i < windowClients.length; i++) {
+        const client = windowClients[i];
+        if (client.url === urlToOpen && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      // If not, open a new window
+      if (clients.openWindow) {
+        return clients.openWindow(urlToOpen);
+      }
+    })
+  );
+});
 
 self.addEventListener('install', () => {
-  self.skipWaiting(); // Immediately activate the new worker
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    (async () => {
-      // 1. Unregister this service worker
-      await self.registration.unregister();
-      
-      // 2. Clear all browser caches for this site
-      if (self.caches) {
-        const names = await caches.keys();
-        await Promise.all(names.map(name => caches.delete(name)));
-      }
-      
-      // 3. Force-reload all open windows to get fresh content from server
-      const windows = await self.clients.matchAll({ type: 'window' });
-      for (const client of windows) {
-        if (client.url && 'navigate' in client) {
-          client.navigate(client.url);
-        }
-      }
-      
-      console.log('✅ Service Worker and Caches cleared.');
-    })()
-  );
+  event.waitUntil(self.clients.claim());
 });

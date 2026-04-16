@@ -71,6 +71,7 @@ export default function NavBar({ user, pet }) {
     }
     return () => {
       if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null }
+      if (window.navbarMsgChannelRef) { supabase.removeChannel(window.navbarMsgChannelRef); window.navbarMsgChannelRef = null }
       initializedRef.current = false
     }
   }, [user?.id])
@@ -119,7 +120,8 @@ export default function NavBar({ user, pet }) {
 
   const setupRealtime = () => {
     if (channelRef.current) supabase.removeChannel(channelRef.current)
-    const channel = supabase.channel(`navbar-rt-${user.id}`)
+    const channelName = `navbar-rt-${user.id}-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+    const channel = supabase.channel(channelName)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, (payload) => {
         const n = payload.new
         if (n.type !== 'message') {
@@ -150,33 +152,49 @@ export default function NavBar({ user, pet }) {
           }
         }
       })
+      .subscribe()
+    channelRef.current = channel
+
+    // Completely isolated channel for ONLY messages
+    const msgChannelName = `navbar-msg-${user.id}-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+    const msgChannel = supabase.channel(msgChannelName)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload) => {
-        const newMsg = payload.new
-        if (newMsg.sender_id === user.id) return
-        const { data: conv } = await supabase.from('conversations').select('id').eq('id', newMsg.conversation_id).or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`).single()
-        if (!conv) return
-        if (!newMsg.is_read) { 
-          setUnreadMsgCount(prev => prev + 1); 
-          playSound('message')
-          if (Notification.permission === 'granted') {
+        try {
+          const newMsg = payload.new
+          if (newMsg.sender_id === user.id) return
+          // Soft fetch, handle any RLS failures silently
+          const { data: convs } = await supabase.from('conversations').select('id').eq('id', newMsg.conversation_id).or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`)
+          if (!convs || convs.length === 0) return
+          
+          if (!newMsg.is_read) { 
+            setUnreadMsgCount(prev => prev + 1); 
             playSound('message')
-            new Notification('💬 New Message', {
-              body: newMsg.content.substring(0, 50) + (newMsg.content.length > 50 ? '...' : ''),
-              icon: '/logo.png',
-              vibrate: [200, 100, 200]
-            })
+            
+            // Toast UI fallback
+            const toast = document.createElement('div');
+            toast.style.cssText = 'position:fixed;top:20px;right:20px;background:#fff;border-left:4px solid #6C4BF6;color:#1E1347;padding:16px;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,0.12);z-index:9999;font-family:Nunito,sans-serif;font-weight:700;font-size:0.9rem;animation:fadeUp 0.3s ease;cursor:pointer;max-width:300px;';
+            toast.innerHTML = `<div style="font-size:0.75rem;color:#6C4BF6;margin-bottom:4px;">💬 New Message</div><div>${newMsg.content ? (newMsg.content.length > 40 ? newMsg.content.substring(0, 40) + '...' : newMsg.content) : '📸 Image'}</div>`;
+            toast.onclick = () => { router.push('/chat'); document.body.removeChild(toast); };
+            document.body.appendChild(toast);
+            setTimeout(() => { if (document.body.contains(toast)) document.body.removeChild(toast); }, 4000);
+
+            if (Notification.permission === 'granted') {
+              new Notification('💬 New Message', {
+                body: newMsg.content.substring(0, 50) + (newMsg.content.length > 50 ? '...' : ''),
+                icon: '/logo.png',
+                vibrate: [200, 100, 200]
+              })
+            }
           }
-        }
+        } catch(e) { console.error("Realtime msg Error", e) }
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload) => {
         if (!payload.old.is_read && payload.new.is_read && payload.new.sender_id !== user.id) setUnreadMsgCount(prev => Math.max(0, prev - 1))
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'cart', filter: `user_id=eq.${user.id}` }, () => setCartCount(prev => prev + 1))
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'cart' }, (payload) => {
-        if (payload.old?.user_id === user.id) setCartCount(prev => Math.max(0, prev - 1))
-      })
       .subscribe()
-    channelRef.current = channel
+    
+    // Save string to global window object so we can explicitly kill it manually if React unmounts poorly
+    window.navbarMsgChannelRef = msgChannel
   }
 
   const handleSearch = async (q) => {
@@ -353,7 +371,7 @@ export default function NavBar({ user, pet }) {
         {/* Logo */}
         <div onClick={() => router.push('/feed')} style={{ cursor: 'pointer', flexShrink: 0, transform: isMobile ? 'scale(1.4)' : 'scale(1.2)', marginLeft: isMobile ? 10 : 0 }}>
           <img src="/logo.png" alt="logo"
-            style={{ height: 120, width: 'auto', padding: '4px', objectFit: 'contain' }} />
+            style={{ height: 100, width: 'auto', padding: '10px', objectFit: 'contain' }} />
         </div>
 
         {/* Search Bar */}
