@@ -7,6 +7,7 @@ import { uploadToCloudinary } from '../lib/cloudinary'
 export default function Profile() {
   const router = useRouter()
   const [user, setUser] = useState(null)
+  const [mounted, setMounted] = useState(false)
   const [pet, setPet] = useState(null)
   const [posts, setPosts] = useState([])
   const [reels, setReels] = useState([])
@@ -38,11 +39,16 @@ export default function Profile() {
       setUser(session.user)
 
       const fetchUserContent = (fetchPetId) => {
-        supabase.from('posts').select('*, comments(count)').eq('pet_id', fetchPetId).order('created_at', { ascending: false }).limit(100).then(({ data }) => {
+        supabase.from('posts').select('*, comments(count)').eq('pet_id', fetchPetId).order('created_at', { ascending: false }).limit(100).then(({ data, error }) => {
+          if (error) console.error('Profile posts fetch error:', error)
+          else console.log('Profile posts:', data?.length)
           setPosts((data || []).map(p => ({ ...p, comments_count: p.comments?.[0]?.count || 0 })))
         })
-        supabase.from('reels').select('*, comments(count)').eq('pet_id', fetchPetId).order('created_at', { ascending: false }).limit(100).then(({ data }) => {
-          setReels((data || []).map(r => ({ ...r, comments_count: r.comments?.[0]?.count || 0 })))
+        // NOTE: reels has no FK to comments - omit that join
+        supabase.from('reels').select('*').eq('pet_id', fetchPetId).order('created_at', { ascending: false }).limit(100).then(({ data, error }) => {
+          if (error) console.error('Profile reels fetch error:', error)
+          else console.log('Profile reels:', data?.length)
+          setReels((data || []).map(r => ({ ...r, comments_count: 0 })))
         })
       }
 
@@ -105,6 +111,7 @@ export default function Profile() {
         setPetForm(prev => ({ ...prev, owner_name: email.split('@')[0] || '' }))
         setLoading(false)
       }
+      setMounted(true)
     })
   }, [])
 
@@ -230,6 +237,14 @@ export default function Profile() {
     </div>
   )
 
+  // Standard hydration-safe loading state
+  if (loading || !mounted) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ animation: 'pulse 1.2s infinite', fontSize: '3rem' }}>🐾</div>
+      </div>
+    )
+  }
   return (
     <div style={{ background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))', minHeight: '100vh' }}>
       <NavBar user={user} pet={pet} />
@@ -237,7 +252,7 @@ export default function Profile() {
       <style>{`
         .profile-wrapper {
           max-width: 860px;
-          margin: 68px auto 0;
+          margin: 98px auto 0;
           padding-bottom: 60px;
           padding-top:30px
         }

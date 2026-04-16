@@ -12,6 +12,7 @@ const POPULAR_LOCATIONS = ['Mumbai, India','Delhi, India','Bengaluru, India','Ch
 export default function Feed() {
   const router = useRouter()
   const [user, setUser] = useState(null)
+  const [mounted, setMounted] = useState(false)
   const [pet, setPet] = useState(null)
   const [posts, setPosts] = useState([])
   const [postText, setPostText] = useState('')
@@ -59,7 +60,10 @@ export default function Feed() {
   const feedVideoRefs = useRef({})
   const feedObserver = useRef(null)
 
-  useEffect(() => { init() }, [])
+  useEffect(() => { 
+    setMounted(true)
+    init() 
+  }, [])
   useEffect(() => {
     const h = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setOpenMenu(null) }
     document.addEventListener('mousedown', h)
@@ -103,6 +107,14 @@ export default function Feed() {
       a.play()
       setPreviewAudio(a)
       setPlayingTrackId(track.id)
+    }
+  }
+
+  const stopPreviewAudio = () => {
+    if (previewAudio) {
+      previewAudio.pause()
+      setPreviewAudio(null)
+      setPlayingTrackId(null)
     }
   }
 
@@ -203,15 +215,18 @@ export default function Feed() {
     const FETCH_LIMIT = 20
     
     let postQuery = supabase.from('posts').select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id), comments(count)').order('created_at', { ascending: false }).limit(FETCH_LIMIT)
-    let reelQuery = supabase.from('reels').select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id), comments(count)').order('created_at', { ascending: false }).limit(FETCH_LIMIT)
+    // NOTE: reels table has NO foreign key to comments — omit comments join to avoid crash
+    let reelQuery = supabase.from('reels').select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id)').order('created_at', { ascending: false }).limit(FETCH_LIMIT)
 
     if (isAppending && lastTimestamp) {
       postQuery = postQuery.lt('created_at', lastTimestamp)
       reelQuery = reelQuery.lt('created_at', lastTimestamp)
     }
 
-    const { data: pD } = await postQuery
-    const { data: rD } = await reelQuery
+    const { data: pD, error: pErr } = await postQuery
+    const { data: rD, error: rErr } = await reelQuery
+    if (pErr) console.error('Posts fetch error:', pErr)
+    if (rErr) console.error('Reels fetch error:', rErr)
 
     const pD_typed = (pD || []).map(p => ({
       ...p,
@@ -221,7 +236,7 @@ export default function Feed() {
     const rD_typed = (rD || []).map(r => ({
       ...r,
       type: 'reel',
-      comments_count: r.comments?.[0]?.count || 0
+      comments_count: 0
     }))
     
     const mixed = [...pD_typed,...rD_typed].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,FETCH_LIMIT)
@@ -257,13 +272,24 @@ export default function Feed() {
   }
 
   const fetchComments = async (postId) => {
-    const { data } = await supabase.from('comments').select('*, pets(pet_name, emoji, avatar_url, user_id)').eq('post_id',postId).is('parent_id',null).order('created_at',{ascending:true})
+    // Determine if this is a reel by checking the posts state
+    const thePost = posts.find(p => p.id === postId)
+    const isReel = thePost?.type === 'reel'
+    
+    let query = supabase.from('comments').select('*, pets(pet_name, emoji, avatar_url, user_id)').is('parent_id', null).order('created_at', { ascending: true })
+    if (isReel) query = query.eq('reel_id', postId)
+    else query = query.eq('post_id', postId)
+    
+    const { data } = await query
+    
+    const savedCommentLikes = JSON.parse(localStorage.getItem(`pawverse_comment_likes_${user?.id}`) || '{}')
+    
     const withReplies = await Promise.all((data||[]).map(async(c) => {
       const { data: rep } = await supabase.from('comments').select('*, pets(pet_name, emoji, avatar_url, user_id)').eq('parent_id',c.id).order('created_at',{ascending:true})
-      return {...c, replies: rep||[]}
+      const repWithLikes = (rep||[]).map(r => ({...r, likedByMe: !!savedCommentLikes[r.id]}))
+      return {...c, likedByMe: !!savedCommentLikes[c.id], replies: repWithLikes||[]}
     }))
     setActiveComments(prev=>({...prev,[postId]:withReplies}))
-    // Update post's comment count with real count from DB
     const totalCount = withReplies.reduce((sum, c) => sum + 1 + (c.replies?.length || 0), 0)
     setPosts(prev=>prev.map(p=>p.id===postId?{...p,comments_count:totalCount}:p))
   }
@@ -285,8 +311,16 @@ export default function Feed() {
       else { alert('Please set up your pet profile first!'); return }
     }
     
-    const { data: nc, error } = await supabase.from('comments').insert({ post_id:postId, pet_id:currentPet.id, user_id:user.id, content:text, parent_id:parentId||null }).select('*, pets(pet_name, emoji, avatar_url, user_id)').single()
-    if (error||!nc) return
+    // Use reel_id for reels, post_id for regular posts
+    const thePost = posts.find(p => p.id === postId)
+    const isReel = thePost?.type === 'reel'
+    const insertPayload = isReel
+      ? { reel_id: postId, pet_id: currentPet.id, user_id: user.id, content: text, parent_id: parentId || null }
+      : { post_id: postId, pet_id: currentPet.id, user_id: user.id, content: text, parent_id: parentId || null }
+    
+    const { data: nc, error } = await supabase.from('comments').insert(insertPayload).select('*, pets(pet_name, emoji, avatar_url, user_id)').single()
+    if (error) { console.error('Comment insert error:', error); return }
+    if (!nc) return
     setCommentTexts(prev=>({...prev,[key]:''}))
     setReplyTo(prev=>({...prev,[postId]:null}))
     if (parentId) { setActiveComments(prev=>({...prev,[postId]:(prev[postId]||[]).map(c=>c.id===parentId?{...c,replies:[...(c.replies||[]),{...nc,replies:[]}]}:c)})) }
@@ -318,9 +352,21 @@ export default function Feed() {
   }
 
   const handleLikeComment = async (comment,postId) => {
-    const newLikes=(comment.likes||0)+(comment.likedByMe?-1:1)
+    const isLiked = comment.likedByMe
+    const newLikes = Math.max(0, (comment.likes||0) + (isLiked ? -1 : 1))
+    
+    const savedCommentLikes = JSON.parse(localStorage.getItem(`pawverse_comment_likes_${user?.id}`) || '{}')
+    savedCommentLikes[comment.id] = !isLiked
+    localStorage.setItem(`pawverse_comment_likes_${user?.id}`, JSON.stringify(savedCommentLikes))
+    
     await supabase.from('comments').update({likes:newLikes}).eq('id',comment.id)
-    setActiveComments(prev=>({...prev,[postId]:(prev[postId]||[]).map(c=>c.id===comment.id?{...c,likes:newLikes,likedByMe:!c.likedByMe}:c)}))
+    setActiveComments(prev=>({...prev,[postId]:(prev[postId]||[]).map(c=>{
+      if (c.id === comment.id) return {...c, likes:newLikes, likedByMe:!isLiked}
+      if (c.replies) {
+        return {...c, replies: c.replies.map(r => r.id === comment.id ? {...r, likes:newLikes, likedByMe:!isLiked} : r)}
+      }
+      return c
+    })}))
 
     if (!comment.likedByMe && comment.pets?.user_id && comment.pets.user_id !== user.id) {
       await supabase.from('notifications').insert({user_id:comment.pets.user_id,type:'like',message:`${pet.pet_name} liked your comment! ❤️|/post/${postId}`})
@@ -363,20 +409,31 @@ export default function Feed() {
   const handlePost = async () => {
     if (!postText.trim()&&!selectedImage&&!selectedVideo||!pet) return
     setPosting(true)
+    stopPreviewAudio()
     try {
       if (selectedVideo) {
         setUploadingImage(true)
         const publicUrl = await uploadToCloudinary(selectedVideo, 'reels')
         setUploadingImage(false)
 
-        const hashtags=(postText.match(/#[\w]+/g)||[]).map(h=>h.toLowerCase())
+        const hashtags = (postText.match(/#[\w]+/g) || []).map(h => h.toLowerCase())
         const { data, error } = await supabase.from('reels').insert({
-          pet_id:pet.id, video_url:publicUrl, caption:postText, likes:0, views:0,
-          audio_url: postMusic?.url || null, audio_name: postMusic ? JSON.stringify({id: postMusic.id, title: postMusic.title, artist: postMusic.artist, cover: postMusic.cover, start: postMusicStart}) : null
+          pet_id: pet.id, 
+          user_id: user.id, 
+          video_url: publicUrl, 
+          caption: postText, 
+          likes: 0, 
+          views: 0,
+          hashtags: hashtags.length > 0 ? hashtags : null,
+          audio_url: postMusic?.url || null, 
+          audio_name: postMusic ? JSON.stringify({id: postMusic.id, title: postMusic.title, artist: postMusic.artist, cover: postMusic.cover, start: postMusicStart}) : null
         }).select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id)').single()
+        console.log("Supabase reel insert result:", { data, error })
+        if (error) throw error
         
-        if (!error&&data) {
-          setPosts([data,...posts]); setPostText(''); setPostLocation(''); setPostFeeling(''); setPostMusic(null); removeImage()
+        if (data) {
+          const newData = { ...data, type: 'reel' }
+          setPosts([newData,...posts]); setPostText(''); setPostLocation(''); setPostFeeling(''); setPostMusic(null); removeImage()
           await supabase.from('pets').update({paw_coins:(pet.paw_coins||0)+15}).eq('id',pet.id)
           setPet(p=>({...p,paw_coins:(p.paw_coins||0)+15}))
           const { data:fS } = await supabase.from('friend_requests').select('receiver_id').eq('sender_id',user.id).eq('status','accepted')
@@ -404,14 +461,12 @@ export default function Feed() {
           location:postLocation||null, feeling:postFeeling||null, hashtags:hashtags.length>0?hashtags:null,
           audio_url: postMusic?.url || null, audio_name: postMusic ? JSON.stringify({id: postMusic.id, title: postMusic.title, artist: postMusic.artist, cover: postMusic.cover, start: postMusicStart}) : null
         }).select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id)').single()
-        if (error) {
-          console.error("Supabase post error:", error)
-          alert(`Failed to save post: ${error.message}`)
-          return
-        }
+        console.log("Supabase post insert result:", { data, error })
+        if (error) throw error
         
         if (data) {
-          setPosts([data,...posts]); setPostText(''); setPostLocation(''); setPostFeeling(''); setPostMusic(null); removeImage()
+          const newData = { ...data, type: 'post' }
+          setPosts([newData,...posts]); setPostText(''); setPostLocation(''); setPostFeeling(''); setPostMusic(null); removeImage()
           await supabase.from('pets').update({paw_coins:(pet.paw_coins||0)+10}).eq('id',pet.id)
           setPet(p=>({...p,paw_coins:(p.paw_coins||0)+10}))
           const { data:fS } = await supabase.from('friend_requests').select('receiver_id').eq('sender_id',user.id).eq('status','accepted')
@@ -615,7 +670,14 @@ export default function Feed() {
   const tagSuggestions = tagMatch ? trendingTags.filter(t=>t.toLowerCase().startsWith(`#${tagMatch[1]}`.toLowerCase())) : []
   const insertTag = (tag) => { setPostText(postText.replace(/#([\w]*)$/,tag+' ')); textareaRef.current?.focus() }
 
-  if (loading) return <div className="feed-loading">🐾</div>
+  // Standard hydration-safe loading state
+  if (loading || !mounted) {
+    return (
+      <div className="feed-loading">
+        <div style={{ animation: 'pulse 1.2s infinite', fontSize: '3rem' }}>🐾</div>
+      </div>
+    )
+  }
 
   // Filter posts by active tag from URL
   const displayedPosts = activeTagFilter
@@ -811,8 +873,8 @@ export default function Feed() {
                     <div style={{fontSize:'0.82rem', fontWeight:700, color:'#374151', marginBottom:8}}>Select Start Time: <span style={{color:'#6C4BF6'}}>{postMusicStart}s</span></div>
                     <input type="range" min="0" max="30" value={postMusicStart} onChange={e=>setPostMusicStart(parseInt(e.target.value))} style={{width:'100%', accentColor:'#6C4BF6'}} />
                     <div style={{display:'flex', justifyContent:'space-between', fontSize:'0.7rem', color:'#9CA3AF'}}><span>0s</span><span>30s Max</span></div>
-                    <button style={{width:'100%', padding:'10px', background:'#F3F0FF', color:'#6C4BF6', border:'none', borderRadius:10, fontWeight:700, marginTop:10, cursor:'pointer'}} onClick={()=>{setPostMusic(null); setShowMusicPicker(false)}}>✕ Remove Track</button>
-                    <button style={{width:'100%', padding:'10px', background:'linear-gradient(135deg, #FF6B35, #6C4BF6)', color:'#fff', border:'none', borderRadius:10, fontWeight:800, marginTop:6, cursor:'pointer'}} onClick={()=>setShowMusicPicker(false)}>✓ Done</button>
+                    <button style={{width:'100%', padding:'10px', background:'#F3F0FF', color:'#6C4BF6', border:'none', borderRadius:10, fontWeight:700, marginTop:10, cursor:'pointer'}} onClick={()=>{setPostMusic(null); setShowMusicPicker(false); stopPreviewAudio()}}>✕ Remove Track</button>
+                    <button style={{width:'100%', padding:'10px', background:'linear-gradient(135deg, #FF6B35, #6C4BF6)', color:'#fff', border:'none', borderRadius:10, fontWeight:800, marginTop:6, cursor:'pointer'}} onClick={()=>{setShowMusicPicker(false); stopPreviewAudio()}}>✓ Done</button>
                   </div>
                 )}
               </div>
@@ -844,10 +906,14 @@ export default function Feed() {
           )}
 
           {displayedPosts.map(post=>{
-            const isMyPost=post.pets?.user_id===user?.id
+            // Defensive check for pets data
+            if (!post || !post.pets) return null
+            
+            const isMyPost=user && post.pets.user_id===user.id
             const comments=activeComments[post.id]
+            const postKey = `${post.type}-${post.id}`
             return (
-              <div key={post.id} data-post-id={post.id} className="card feed-post fade-up" ref={el => { if (el && feedObserver.current) feedObserver.current.observe(el) }}>
+              <div key={postKey} data-post-id={post.id} className="card feed-post fade-up" ref={el => { if (el && feedObserver.current) feedObserver.current.observe(el) }}>
 
                 <div className="feed-post-header">
                   <div className={`feed-post-avatar${!isMyPost?' clickable':''}`} onClick={()=>!isMyPost&&router.push(`/user/${post.pets?.user_id}`)}>

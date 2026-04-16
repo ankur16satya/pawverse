@@ -11,6 +11,7 @@ export default function Home() {
   const [mode, setMode] = useState(null)
   const [loading, setLoading] = useState(false)
   const [authChecking, setAuthChecking] = useState(true)
+  const [mounted, setMounted] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [unconfirmedEmail, setUnconfirmedEmail] = useState('')
@@ -59,6 +60,7 @@ export default function Home() {
         setAuthChecking(false)
       }
     })
+    setMounted(true)
     return () => subscription.unsubscribe()
   }, [])
 
@@ -220,8 +222,8 @@ export default function Home() {
     }
   }
 
-  // Show a minimal loading state while checking auth — prevents blank page flash
-  if (authChecking) {
+  // Standard hydration-safe loading state
+  if (authChecking || !mounted) {
     return (
       <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #FFF0E8 0%, #F0EBFF 50%, #E8F8FF 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12 }}>
         <div style={{ fontSize: '3.5rem', animation: 'pulse 1.2s infinite' }}>🐾</div>
@@ -229,7 +231,6 @@ export default function Home() {
       </div>
     )
   }
-
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #FFF0E8 0%, #F0EBFF 50%, #E8F8FF 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden', padding: '20px' }}>
       {PAWS.map(i => (

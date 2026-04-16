@@ -27,11 +27,12 @@ export default function Reels() {
   const [likedMap, setLikedMap] = useState({})
 
   const fetchComments = async (reelId) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('comments')
       .select('*, pets(pet_name, emoji, avatar_url, user_id)')
-      .eq('post_id', reelId)
+      .eq('reel_id', reelId)
       .order('created_at', { ascending: true })
+    if (error) console.error('fetchComments error:', error)
     setComments(data || [])
   }
 
@@ -48,7 +49,7 @@ export default function Reels() {
     }
     setSendingComment(true)
     const { data, error } = await supabase.from('comments').insert({
-      post_id: commentsModal.id,
+      reel_id: commentsModal.id,
       user_id: user.id,
       pet_id: pet.id,
       content: commentText.trim()
@@ -168,15 +169,17 @@ export default function Reels() {
   }
 
   const fetchReels = async () => {
+    // NOTE: reels has no FK to comments - omit that join
     const { data, error } = await supabase
       .from('reels')
-      .select('*, pets(pet_name, emoji, owner_name, avatar_url, user_id), comments(count)')
+      .select('*, pets(pet_name, emoji, owner_name, avatar_url, user_id)')
       .order('created_at', { ascending: false })
-      .limit(30)
+      .limit(50)
     if (error) console.error('fetchReels error:', error)
+    else console.log('fetchReels success:', data?.length, 'reels')
     setReels((data || []).map(r => ({
       ...r,
-      comments_count: r.comments?.[0]?.count || 0
+      comments_count: 0
     })))
   }
 
@@ -218,7 +221,7 @@ export default function Reels() {
         caption: caption,
         likes: 0,
         views: 0,
-      }).select('*').single()
+      }).select('*, pets(pet_name, emoji, owner_name, avatar_url, user_id)').single()
       
       if (error) {
         console.error("Supabase reel error:", error)
@@ -417,7 +420,7 @@ export default function Reels() {
       {/* Full screen reel container — starts below navbar (64px) */}
       <div style={{
         position: 'absolute',
-        top: 64,
+        top: 98,
         left: 0,
         right: 0,
         bottom: 0,
@@ -434,8 +437,34 @@ export default function Reels() {
           position: 'relative',
           background: '#000',
         }}>
-
-          
+          {/* Create Reel Button — Floating FAB style */}
+          <button 
+            onClick={() => setShowUpload(true)}
+            style={{
+              position: 'absolute',
+              top: 16,
+              left: 16,
+              zIndex: 100,
+              background: 'rgba(255,255,255,0.2)',
+              backdropFilter: 'blur(10px)',
+              border: '1.5px solid rgba(255,255,255,0.3)',
+              borderRadius: 24,
+              padding: '8px 16px',
+              color: '#fff',
+              fontFamily: 'Nunito, sans-serif',
+              fontWeight: 800,
+              fontSize: '0.85rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
+          >
+            <span style={{ fontSize: '1.2rem' }}>🎬</span> Create
+          </button>
 
           {reels.length === 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#fff', gap: 16, padding: 24 }}>
