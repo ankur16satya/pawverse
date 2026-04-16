@@ -424,7 +424,6 @@ export default function Feed() {
           caption: postText, 
           likes: 0, 
           views: 0,
-          hashtags: hashtags.length > 0 ? hashtags : null,
           audio_url: postMusic?.url || null, 
           audio_name: postMusic ? JSON.stringify({id: postMusic.id, title: postMusic.title, artist: postMusic.artist, cover: postMusic.cover, start: postMusicStart}) : null
         }).select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id)').single()
@@ -615,6 +614,17 @@ export default function Feed() {
     const table = post.type === 'reel' ? 'reels' : 'posts'
     const { error } = await supabase.from(table).delete().eq('id',post.id).eq('pet_id',pet.id)
     if (error) { alert('Could not delete post.'); return }
+    
+    // Delete media from Cloudinary to save space
+    const mediaUrl = post.image_url || post.video_url
+    if (mediaUrl && mediaUrl.includes('res.cloudinary.com')) {
+      fetch('/api/delete-media', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: mediaUrl })
+      }).catch(e => console.error('Cloudinary delete failed:', e))
+    }
+    
     setPosts(prev=>prev.filter(p=>p.id!==post.id)); setOpenMenu(null)
   }
 

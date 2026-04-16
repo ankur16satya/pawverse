@@ -65,12 +65,16 @@ export async function uploadToCloudinary(file, folder = 'pawverse', onProgress =
       if (savedMB > 0) console.log(`🗜️ Compressed: saved ${savedMB}MB`)
     }
 
+    const transformation = file.type.startsWith('video/')
+      ? 'c_limit,w_720,q_auto:eco,vc_auto'
+      : 'c_limit,w_1080,q_auto:eco,f_auto'
+
     // 2. Get signature from our API
     const signRes = await fetch('/api/sign-upload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        paramsToSign: { folder: uploadFolder, timestamp }
+        paramsToSign: { folder: uploadFolder, timestamp, transformation }
       })
     })
     const signData = await signRes.json()
@@ -83,17 +87,7 @@ export async function uploadToCloudinary(file, folder = 'pawverse', onProgress =
     formData.append('timestamp', signData.timestamp)
     formData.append('signature', signData.signature)
     formData.append('folder', uploadFolder)
-
-    // Add quality transformation for images
-    if (file.type.startsWith('image/')) {
-      formData.append('quality', 'auto:good')
-      formData.append('fetch_format', 'auto')
-    }
-
-    // Add video optimization params
-    if (file.type.startsWith('video/')) {
-      formData.append('quality', 'auto:low')
-    }
+    formData.append('transformation', transformation)
 
     const resourceType = file.type.startsWith('video/') ? 'video' : 'image'
 
