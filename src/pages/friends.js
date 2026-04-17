@@ -541,7 +541,7 @@ export default function Friends() {
                     }}>
                       📍 {s.location || 'PawVerse'}
                     </div>
-                    <button onClick={() => handleAddFriend(s)}
+                    <button onClick={(e) => { e.stopPropagation(); handleAddFriend(s); }}
                       disabled={!!friendStatuses[s.user_id]}
                       style={{
                         width: '100%', padding: '8px 0', border: 'none', borderRadius: 10,

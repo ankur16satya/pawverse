@@ -337,6 +337,7 @@ export default function NavBar({ user, pet }) {
   // Extra items shown in More drawer
   const moreItems = [
     { href: '/profile',   icon: pet?.avatar_url ? <img src={pet.avatar_url} alt="av" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', border: '2px solid #FF6B35' }} /> : <span style={{ fontSize: '1.5rem' }}>{pet?.emoji || '🐾'}</span>, label: 'My Profile', desc: pet?.pet_name || 'View your profile' },
+    { href: '/feed?vet=true', icon: <span style={{ fontSize: '1.4rem' }}>⚕️</span>, label: 'Vet Posts', desc: 'Advice from verified Vets' },
     { href: '/friends',   icon: <Users size={24} />,       label: 'Friends',    desc: 'Manage connections', badge: pendingFriendCount },
     { href: '/adopt',     icon: <PawPrint size={24} />,    label: 'Adopt',      desc: 'Find pets to adopt' },
     { href: '/coins',     icon: <Coins size={24} />,       label: 'PawCoins',   desc: `${pet?.paw_coins ?? 0} coins earned` },
@@ -540,12 +541,20 @@ export default function NavBar({ user, pet }) {
             )}
           </div>
 
-          {/* Logout */}
-          <button
-            onClick={handleLogout}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#FFF0E8', border: 'none', borderRadius: 12, padding: '6px 12px', fontSize: '0.8rem', cursor: 'pointer', color: '#FF6B35', fontWeight: 800, fontFamily: 'Nunito, sans-serif' }}>
-            🚪 Logout
-          </button>
+          {/* Top Nav Action: Vet Posts (Mobile) or Logout (Desktop) */}
+          {isMobile ? (
+            <button
+              onClick={() => router.push('/feed?vet=true')}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#E8F8E8', border: 'none', borderRadius: 12, padding: '6px 10px', fontSize: '0.75rem', cursor: 'pointer', color: '#16A34A', fontWeight: 800, fontFamily: 'Nunito, sans-serif' }}>
+              ⚕️ Vet Posts
+            </button>
+          ) : (
+            <button
+              onClick={handleLogout}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#FFF0E8', border: 'none', borderRadius: 12, padding: '6px 12px', fontSize: '0.8rem', cursor: 'pointer', color: '#FF6B35', fontWeight: 800, fontFamily: 'Nunito, sans-serif' }}>
+              🚪 Logout
+            </button>
+          )}
         </div>
       </nav>
 

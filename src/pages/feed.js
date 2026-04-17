@@ -52,6 +52,7 @@ export default function Feed() {
   const [openMenu, setOpenMenu] = useState(null)
   const [editingPost, setEditingPost] = useState(null)
   const [editText, setEditText] = useState('')
+  const [trendingTags, setTrendingTags] = useState(['#PawParents','#CatsOfPawVerse','#DogsRule','#BunnyLife','#AdoptDontShop'])
   const fileInputRef = useRef(null)
   const videoInputRef = useRef(null)
   const menuRef = useRef(null)
@@ -164,6 +165,16 @@ export default function Feed() {
     setIsFeedMuted(!isFeedMuted)
   }
 
+  const isVetFilter = router.query.vet === 'true'
+
+  useEffect(() => {
+    if (mounted && user) {
+      setHasMore(true)
+      setLastTimestamp(null)
+      fetchPosts(user.id, false, isVetFilter)
+    }
+  }, [router.query.vet])
+
   const init = async () => {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { router.push('/'); return }
@@ -200,23 +211,38 @@ export default function Feed() {
     ]
 
     // Fetch posts and friends in parallel
+    const vetQuery = new URLSearchParams(window.location.search).get('vet') === 'true'
     await Promise.all([
-      fetchPosts(userId),
+      fetchPosts(userId, false, vetQuery),
       fIds.length > 0
         ? supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,owner_name').in('user_id', fIds).eq('is_health_pet', false).then(({ data: fp }) => setFriends(fp || []))
         : Promise.resolve()
     ])
 
+    supabase.from('posts').select('hashtags').not('hashtags', 'is', null).limit(1000).order('created_at', { ascending: false }).then(({data}) => {
+      if (data && data.length > 0) {
+        const counts = {}
+        data.forEach(p => { if (p.hashtags) p.hashtags.forEach(h => { counts[h] = (counts[h] || 0) + 1 }) })
+        const trending = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,10).map(x=>x[0])
+        if (trending.length > 0) setTrendingTags(trending)
+      }
+    })
+
     setLoading(false)
   }
 
-  const fetchPosts = async (userId, isAppending = false) => {
+  const fetchPosts = async (userId, isAppending = false, isVet = false) => {
     const currentUserId = userId || user?.id
     const FETCH_LIMIT = 20
     
-    let postQuery = supabase.from('posts').select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id), comments(count)').order('created_at', { ascending: false }).limit(FETCH_LIMIT)
+    let postQuery = supabase.from('posts').select(`*, pets${isVet ? '!inner' : ''}(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id, is_health_pet), comments(count)`).order('created_at', { ascending: false }).limit(FETCH_LIMIT)
     // NOTE: reels table has NO foreign key to comments — omit comments join to avoid crash
-    let reelQuery = supabase.from('reels').select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id)').order('created_at', { ascending: false }).limit(FETCH_LIMIT)
+    let reelQuery = supabase.from('reels').select(`*, pets${isVet ? '!inner' : ''}(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id, is_health_pet)`).order('created_at', { ascending: false }).limit(FETCH_LIMIT)
+
+    if (isVet) {
+      postQuery = postQuery.eq('pets.is_health_pet', true)
+      reelQuery = reelQuery.eq('pets.is_health_pet', true)
+    }
 
     if (isAppending && lastTimestamp) {
       postQuery = postQuery.lt('created_at', lastTimestamp)
@@ -267,7 +293,7 @@ export default function Feed() {
   const loadMore = async () => {
     if (loadingMore || !hasMore) return
     setLoadingMore(true)
-    await fetchPosts(user?.id, true)
+    await fetchPosts(user?.id, true, isVetFilter)
     setLoadingMore(false)
   }
 
@@ -671,10 +697,7 @@ export default function Feed() {
     return `${Math.floor(h/24)}d ago`
   }
 
-  const tagsCount = {}
-  posts.forEach(p=>{ if(p.hashtags) p.hashtags.forEach(h=>{tagsCount[h]=(tagsCount[h]||0)+1}) })
-  let trendingTags = Object.entries(tagsCount).sort((a,b)=>b[1]-a[1]).slice(0,10).map(x=>x[0])
-  if (trendingTags.length===0) trendingTags=['#PawParents','#CatsOfPawVerse','#DogsRule','#BunnyLife','#AdoptDontShop']
+  // Trending tags are now fetched globally in init()
 
   const tagMatch = postText.match(/#([\w]*)$/)
   const tagSuggestions = tagMatch ? trendingTags.filter(t=>t.toLowerCase().startsWith(`#${tagMatch[1]}`.toLowerCase())) : []
@@ -728,7 +751,7 @@ export default function Feed() {
             </div>
           </div>
           <div className="card feed-quick-links">
-            {[['🛍️','Marketplace','/marketplace'],['🩺','Health','/health'],['💬','Messages','/chat'],['🏠','Adopt','/adopt'],['🪙','PawCoins','/coins'],['👫','Friends','/friends']].map(([ic,lb,href])=>(
+            {[['⚕️','Vet Posts','/feed?vet=true'],['🛍️','Marketplace','/marketplace'],['🩺','Health','/health'],['💬','Messages','/chat'],['🏠','Adopt','/adopt'],['🪙','PawCoins','/coins'],['👫','Friends','/friends']].map(([ic,lb,href])=>(
               <div key={href} className="feed-quick-link" onClick={()=>router.push(href)}><span>{ic}</span>{lb}</div>
             ))}
           </div>
@@ -899,19 +922,21 @@ export default function Feed() {
             <div className="feed-hashtag-hint">💡 Tip: Use #hashtags in your text to tag topics</div>
           </div>
 
-          {activeTagFilter && (
-            <div style={{ background: '#F0EBFF', border: '1px solid #D8B4FE', borderRadius: 12, padding: '10px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontWeight: 700, color: '#6C4BF6', fontSize: '0.88rem' }}>🔍 Showing posts tagged: <strong>#{activeTagFilter}</strong></span>
-              <button onClick={() => router.push('/feed')} style={{ background: '#6C4BF6', color: '#fff', border: 'none', borderRadius: 8, padding: '4px 12px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'Nunito, sans-serif' }}>✕ Clear Filter</button>
+          {(activeTagFilter || isVetFilter) && (
+            <div style={{ background: isVetFilter ? '#E8F8E8' : '#F0EBFF', border: `1px solid ${isVetFilter ? '#86EFAC' : '#D8B4FE'}`, borderRadius: 12, padding: '10px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontWeight: 700, color: isVetFilter ? '#16A34A' : '#6C4BF6', fontSize: '0.88rem' }}>
+                🔍 Showing: <strong>{isVetFilter && '⚕️ Vet Posts'} {activeTagFilter && (isVetFilter ? `+ #${activeTagFilter}` : `posts tagged: #${activeTagFilter}`)}</strong>
+              </span>
+              <button onClick={() => router.push('/feed')} style={{ background: isVetFilter ? '#16A34A' : '#6C4BF6', color: '#fff', border: 'none', borderRadius: 8, padding: '4px 12px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'Nunito, sans-serif' }}>✕ Clear Filter</button>
             </div>
           )}
 
           {displayedPosts.length===0&&(
             <div className="card feed-empty">
               <div style={{fontSize:'3rem',marginBottom:10}}>🐾</div>
-              <div style={{fontFamily:"'Baloo 2',cursive",fontWeight:800,fontSize:'1.1rem'}}>{activeTagFilter ? `No posts with #${activeTagFilter}` : 'No posts yet!'}</div>
-              <div style={{fontSize:'0.88rem',marginTop:4}}>{activeTagFilter ? 'Try a different hashtag or clear the filter.' : 'Be the first to share your pet’s story ❤️'}</div>
-              {activeTagFilter && <button onClick={() => router.push('/feed')} style={{ marginTop: 12, padding: '8px 20px', borderRadius: 10, background: '#F0EBFF', color: '#6C4BF6', border: 'none', fontWeight: 700, cursor: 'pointer', fontFamily: 'Nunito, sans-serif' }}>← Show all posts</button>}
+              <div style={{fontFamily:"'Baloo 2',cursive",fontWeight:800,fontSize:'1.1rem'}}>{(activeTagFilter || isVetFilter) ? `No posts found` : 'No posts yet!'}</div>
+              <div style={{fontSize:'0.88rem',marginTop:4}}>{(activeTagFilter || isVetFilter) ? 'Try a different filter or clear it.' : 'Be the first to share your pet’s story ❤️'}</div>
+              {(activeTagFilter || isVetFilter) && <button onClick={() => router.push('/feed')} style={{ marginTop: 12, padding: '8px 20px', borderRadius: 10, background: isVetFilter ? '#E8F8E8' : '#F0EBFF', color: isVetFilter ? '#16A34A' : '#6C4BF6', border: 'none', fontWeight: 700, cursor: 'pointer', fontFamily: 'Nunito, sans-serif' }}>← Show all posts</button>}
             </div>
           )}
 
