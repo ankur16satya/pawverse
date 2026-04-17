@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
+import { uploadToCloudinary } from '../lib/cloudinary'
 
 // ⚠️ List all authorized super admin emails here:
 const SUPER_ADMINS = ['ankur16satya@gmail.com', 'sharmasiddharth269@gmail.com']
@@ -19,6 +20,15 @@ export default function SuperAdmin() {
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false)
   const [adminPassInput, setAdminPassInput] = useState('')
   const [passError, setPassError] = useState('')
+  
+  // Blog State
+  const [blogs, setBlogs] = useState([])
+  const [showBlogForm, setShowBlogForm] = useState(false)
+  const [blogSaving, setBlogSaving] = useState(false)
+  const [editingBlog, setEditingBlog] = useState(null)
+  const [blogForm, setBlogForm] = useState({
+    title: '', slug: '', excerpt: '', content: '', image_url: '', category: 'General'
+  })
 
   useEffect(() => { init() }, [])
 
@@ -43,6 +53,11 @@ export default function SuperAdmin() {
     setListings(listData || [])
     setAppointments(appts || [])
     setDoctors((listData || []).filter(l => l.is_service && l.brand === 'Doctor'))
+    
+    // Fetch Blogs
+    const { data: blogData } = await supabase.from('blogs').select('*').order('created_at', { ascending: false })
+    setBlogs(blogData || [])
+    
     setLoading(false)
   }
 
@@ -69,6 +84,42 @@ export default function SuperAdmin() {
     if (!error) {
        setAppointments(prev => prev.map(a => a.id === id ? { ...a, payment_status: 'verified' } : a))
        alert('✅ Payment marked as Verified!')
+    }
+  }
+
+  const handleBlogSubmit = async (e) => {
+    e.preventDefault()
+    setBlogSaving(true)
+    try {
+      const slug = blogForm.slug || blogForm.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+      const dataToSave = { ...blogForm, slug, author_name: 'Admin', author_avatar: '/logo.png' }
+      
+      let res;
+      if (editingBlog) {
+        res = await supabase.from('blogs').update(dataToSave).eq('id', editingBlog.id)
+      } else {
+        res = await supabase.from('blogs').insert(dataToSave)
+      }
+
+      if (res.error) throw res.error
+      
+      alert(`Blog ${editingBlog ? 'updated' : 'created'} successfully!`)
+      setShowBlogForm(false)
+      setEditingBlog(null)
+      setBlogForm({ title: '', slug: '', excerpt: '', content: '', image_url: '', category: 'General' })
+      init() // Refresh data
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setBlogSaving(false)
+    }
+  }
+
+  const deleteBlog = async (id) => {
+    if (!confirm('Are you sure you want to delete this blog?')) return
+    const { error } = await supabase.from('blogs').delete().eq('id', id)
+    if (!error) {
+      setBlogs(prev => prev.filter(b => b.id !== id))
     }
   }
 
@@ -136,6 +187,7 @@ export default function SuperAdmin() {
             { id: 'analytics', label: '📊 Dashboard', color: '#FF6B35' },
             { id: 'doctors', label: '🩺 Vet Services', color: '#6C4BF6' },
             { id: 'suppliers', label: '📦 Marketplace', color: '#22C55E' },
+            { id: 'blogs', label: '📝 Blogs', color: '#0EA5E9' },
             { id: 'payments', label: '💰 UTR Verify', color: '#FF4757' },
           ].map(t => (
             <button key={t.id} onClick={() => setActiveTab(t.id)} 
@@ -310,6 +362,119 @@ export default function SuperAdmin() {
                    ))}
                 </tbody>
              </table>
+          </div>
+        )}
+
+        {/* 📝 Blogs View */}
+        {activeTab === 'blogs' && (
+          <div style={{ animation: 'fadeIn 0.3s ease' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h3 style={{ fontFamily: "Baloo 2", fontSize: '1.5rem', color: '#1E1347', margin: 0 }}>All Blog Articles</h3>
+              <button 
+                onClick={() => { setEditingBlog(null); setBlogForm({ title: '', slug: '', excerpt: '', content: '', image_url: '', category: 'General' }); setShowBlogForm(true); }}
+                className="btn-primary" style={{ padding: '10px 20px', fontSize: '0.9rem' }}>
+                + Write New Blog
+              </button>
+            </div>
+
+            <div style={{ background: '#fff', borderRadius: 20, padding: 20, boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1.5px solid #EDE8FF' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ color: '#9CA3AF', fontSize: '0.75rem', borderBottom: '1.5px solid #F3F0FF' }}>
+                    <th style={{ padding: '12px 0' }}>BLOG TITLE</th>
+                    <th>CATEGORY</th>
+                    <th>PUBLISHED ON</th>
+                    <th style={{ textAlign: 'right' }}>ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {blogs.length === 0 && (
+                    <tr><td colSpan="4" style={{ textAlign: 'center', padding: '40px', color: '#6B7280' }}>No blogs found. Start writing! ✍️</td></tr>
+                  )}
+                  {blogs.map(b => (
+                    <tr key={b.id} style={{ borderBottom: '1px solid #F3F0FF', fontSize: '0.88rem' }}>
+                      <td style={{ padding: '14px 0', fontWeight: 700, color: '#1E1347' }}>{b.title}</td>
+                      <td>
+                        <span style={{ fontSize: '0.7rem', padding: '3px 9px', borderRadius: 20, background: '#F0F9FF', color: '#0EA5E9', fontWeight: 800 }}>
+                          {b.category.toUpperCase()}
+                        </span>
+                      </td>
+                      <td style={{ color: '#6B7280' }}>{new Date(b.created_at).toLocaleDateString()}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <button 
+                          onClick={() => { setEditingBlog(b); setBlogForm(b); setShowBlogForm(true); }}
+                          style={{ background: 'none', border: 'none', color: '#6C4BF6', fontWeight: 800, cursor: 'pointer', marginRight: 15 }}>Edit</button>
+                        <button 
+                          onClick={() => deleteBlog(b.id)}
+                          style={{ background: 'none', border: 'none', color: '#FF4757', fontWeight: 800, cursor: 'pointer' }}>Delete</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ✍️ Blog Editor Modal */}
+        {showBlogForm && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 11000, padding: 20 }}>
+            <div style={{ background: '#fff', borderRadius: 24, padding: 32, width: '100%', maxWidth: 700, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                <h2 style={{ fontFamily: "Baloo 2", fontSize: '1.8rem', color: '#1E1347', margin: 0 }}>{editingBlog ? '📝 Edit Article' : '✍️ Write New Article'}</h2>
+                <button onClick={() => setShowBlogForm(false)} style={{ background: '#F3F4F6', border: 'none', width: 36, height: 36, borderRadius: '50%', cursor: 'pointer', fontWeight: 800 }}>✕</button>
+              </div>
+
+              <form onSubmit={handleBlogSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  <div>
+                    <label style={{ fontSize: '0.85rem', fontWeight: 800, color: '#374151', display: 'block', marginBottom: 6 }}>Blog Title</label>
+                    <input className="input" required value={blogForm.title} onChange={e => setBlogForm({...blogForm, title: e.target.value})} placeholder="e.g. 5 Tips for Puppy Training" />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.85rem', fontWeight: 800, color: '#374151', display: 'block', marginBottom: 6 }}>Category</label>
+                    <select className="input" value={blogForm.category} onChange={e => setBlogForm({...blogForm, category: e.target.value})}>
+                      <option>Health</option>
+                      <option>Training</option>
+                      <option>Food</option>
+                      <option>Fun</option>
+                      <option>General</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 800, color: '#374151', display: 'block', marginBottom: 6 }}>Cover Image</label>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                    <input type="file" accept="image/*" onChange={async (e) => {
+                      if (e.target.files?.[0]) {
+                        const url = await uploadToCloudinary(e.target.files[0], 'blogs')
+                        setBlogForm({...blogForm, image_url: url})
+                      }
+                    }} style={{ fontSize: '0.8rem' }} />
+                    {blogForm.image_url && <img src={blogForm.image_url} style={{ width: 60, height: 40, objectFit: 'cover', borderRadius: 4, border: '1.5px solid #EDE8FF' }} />}
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 800, color: '#374151', display: 'block', marginBottom: 6 }}>Short Excerpt (SEO Description)</label>
+                  <textarea className="input" rows="2" required value={blogForm.excerpt} onChange={e => setBlogForm({...blogForm, excerpt: e.target.value})} placeholder="Brief summary for social media and search engines..." />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 800, color: '#374151', display: 'block', marginBottom: 6 }}>Article Content (HTML/Rich Text supported)</label>
+                  <textarea className="input" rows="12" required value={blogForm.content} onChange={e => setBlogForm({...blogForm, content: e.target.value})} placeholder="Write your masterpiece here... Use <h3> tags for headings, <p> for paragraphs." 
+                    style={{ fontFamily: 'Georgia, serif', lineHeight: 1.6, fontSize: '1rem', padding: 15 }} />
+                </div>
+
+                <div style={{ display: 'flex', gap: 12, marginTop: 10 }}>
+                  <button type="button" onClick={() => setShowBlogForm(false)} style={{ flex: 1, padding: 14, borderRadius: 14, border: '2px solid #EDE8FF', background: 'transparent', fontWeight: 800 }}>Cancel</button>
+                  <button disabled={blogSaving} className="btn-primary" style={{ flex: 2, padding: 14, borderRadius: 14, fontSize: '1rem' }}>
+                    {blogSaving ? '⏳ Saving...' : '🚀 Publish Article'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
       </div>

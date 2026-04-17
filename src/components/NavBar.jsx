@@ -13,6 +13,8 @@ import {
   Users,
   Video,
   Search,
+  FileText,
+  Heart
 } from "lucide-react"
 // Sound player
 const sounds = {}
@@ -317,6 +319,7 @@ export default function NavBar({ user, pet }) {
   { href: '/marketplace', icon: <ShoppingBag size={26} />, label: 'Market' },
   { href: '/chat',        icon: <MessageCircle size={26} />, label: 'Chat', badge: unreadMsgCount },
   { href: '/friends',     icon: <Users size={26} />, label: 'Friends', badge: pendingFriendCount },
+  { href: '/blogs',       icon: <FileText size={26} />, label: 'Blogs' },
   { href: '/health',      icon: <HeartPulse size={26} />, label: 'Health' },
   { href: '/adopt',       icon: <PawPrint size={26} />, label: 'Adopt' },
   { href: '/coins',       icon: <Coins size={26} />, label: 'Coins' },
@@ -337,6 +340,7 @@ export default function NavBar({ user, pet }) {
   // Extra items shown in More drawer
   const moreItems = [
     { href: '/profile',   icon: pet?.avatar_url ? <img src={pet.avatar_url} alt="av" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', border: '2px solid #FF6B35' }} /> : <span style={{ fontSize: '1.5rem' }}>{pet?.emoji || '🐾'}</span>, label: 'My Profile', desc: pet?.pet_name || 'View your profile' },
+    { href: '/blogs',     icon: <FileText size={24} />,    label: 'Blogs',      desc: 'Expert Pet Advice & Stories' },
     { href: '/feed?vet=true', icon: <span style={{ fontSize: '1.4rem' }}>⚕️</span>, label: 'Vet Posts', desc: 'Advice from verified Vets' },
     { href: '/friends',   icon: <Users size={24} />,       label: 'Friends',    desc: 'Manage connections', badge: pendingFriendCount },
     { href: '/adopt',     icon: <PawPrint size={24} />,    label: 'Adopt',      desc: 'Find pets to adopt' },

@@ -36,4 +36,10 @@
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
+  <url>
+    <loc>https://pawversesocial.com/blogs</loc>
+    <lastmod>2026-04-17</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
 </urlset>
