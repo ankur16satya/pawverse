@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
+import SEO from '../components/SEO'
 import { uploadToCloudinary } from '../lib/cloudinary'
 
 const FEELINGS = ['😀 Happy','😍 Loved','🥳 Excited','😎 Cool','😢 Sad','😤 Annoyed','🤔 Thoughtful','🥺 Grateful','🔥 Hyped','😴 Tired','🤒 Sick','🥰 Blessed']
@@ -188,8 +189,8 @@ export default function Feed() {
       sReqsResult,
       rReqsResult,
     ] = await Promise.all([
-      supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,paw_coins,pet_breed,owner_name,is_health_pet').eq('user_id', userId).eq('is_health_pet', false).maybeSingle(),
-      supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,pet_breed,owner_name').neq('user_id', userId).eq('is_health_pet', false).limit(6),
+      supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,paw_coins,pet_breed,owner_name,is_health_pet,role').eq('user_id', userId).eq('is_health_pet', false).maybeSingle(),
+      supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,pet_breed,owner_name,role').neq('user_id', userId).eq('is_health_pet', false).limit(6),
       supabase.from('friend_requests').select('receiver_id,status').eq('sender_id', userId),
       supabase.from('friend_requests').select('sender_id,status').eq('receiver_id', userId),
     ])
@@ -215,7 +216,7 @@ export default function Feed() {
     await Promise.all([
       fetchPosts(userId, false, vetQuery),
       fIds.length > 0
-        ? supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,owner_name').in('user_id', fIds).eq('is_health_pet', false).then(({ data: fp }) => setFriends(fp || []))
+        ? supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,owner_name,role').in('user_id', fIds).eq('is_health_pet', false).then(({ data: fp }) => setFriends(fp || []))
         : Promise.resolve()
     ])
 
@@ -235,9 +236,9 @@ export default function Feed() {
     const currentUserId = userId || user?.id
     const FETCH_LIMIT = 20
     
-    let postQuery = supabase.from('posts').select(`*, pets${isVet ? '!inner' : ''}(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id, is_health_pet), comments(count)`).order('created_at', { ascending: false }).limit(FETCH_LIMIT)
+    let postQuery = supabase.from('posts').select(`*, pets${isVet ? '!inner' : ''}(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id, is_health_pet, role), comments(count)`).order('created_at', { ascending: false }).limit(FETCH_LIMIT)
     // NOTE: reels table has NO foreign key to comments — omit comments join to avoid crash
-    let reelQuery = supabase.from('reels').select(`*, pets${isVet ? '!inner' : ''}(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id, is_health_pet)`).order('created_at', { ascending: false }).limit(FETCH_LIMIT)
+    let reelQuery = supabase.from('reels').select(`*, pets${isVet ? '!inner' : ''}(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id, is_health_pet, role)`).order('created_at', { ascending: false }).limit(FETCH_LIMIT)
 
     if (isVet) {
       postQuery = postQuery.eq('pets.is_health_pet', true)
@@ -723,6 +724,10 @@ export default function Feed() {
 
   return (
     <div className="feed-page">
+      <SEO 
+        title="Pet Social Feed"
+        description="Explore the latest stories, photos, and reels from the PawVerse community. Join pet parents worldwide and share your pet's journey."
+      />
       <NavBar user={user} pet={pet} />
 
       {lightboxImg && (
@@ -955,7 +960,7 @@ export default function Feed() {
                     {post.pets?.avatar_url?<img src={post.pets.avatar_url} alt="avatar"/>:post.pets?.emoji||'🐾'}
                   </div>
                   <div className="feed-post-meta">
-                    <div className={`feed-post-petname${!isMyPost?' clickable':''}`} onClick={()=>!isMyPost&&router.push(`/user/${post.pets?.user_id}`)}>
+                    <div className={`feed-post-petname${!isMyPost?' clickable':''} ${post.pets?.role === 'vet' ? 'vet-badge' : post.pets?.role === 'supplier' ? 'supplier-badge' : ''}`} onClick={()=>!isMyPost&&router.push(`/user/${post.pets?.user_id}`)}>
                       {post.pets?.pet_name||'A Pet'}
                     </div>
                     <div className="feed-post-submeta">
@@ -1168,7 +1173,7 @@ export default function Feed() {
                   {s.avatar_url?<img src={s.avatar_url} alt="avatar"/>:s.emoji}
                 </div>
                 <div className="feed-suggestion-info">
-                  <div className="feed-suggestion-name" onClick={()=>s.user_id!==user.id&&router.push(`/user/${s.user_id}`)}>{s.pet_name}</div>
+                  <div className={`feed-suggestion-name ${s.role === 'vet' ? 'vet-badge' : s.role === 'supplier' ? 'supplier-badge' : ''}`} onClick={()=>s.user_id!==user.id&&router.push(`/user/${s.user_id}`)}>{s.pet_name}</div>
                   <div className="feed-suggestion-breed">{s.pet_breed}</div>
                 </div>
                 <button className={!friendStatuses[s.user_id]?'btn-secondary':'feed-friend-btn-done'} onClick={()=>handleAddFriend(s)} disabled={!!friendStatuses[s.user_id]} style={{padding:'4px 10px',fontSize:'0.72rem',borderRadius:8,border:'none',fontFamily:'Nunito,sans-serif',fontWeight:700,cursor:friendStatuses[s.user_id]?'default':'pointer',background:friendStatuses[s.user_id]?'#F3F0FF':'',color:friendStatuses[s.user_id]?'#6C4BF6':''}}>
@@ -1231,7 +1236,7 @@ export default function Feed() {
               <div key={f.id} className="feed-friend-share-row">
                 <div className="feed-friend-share-avatar">{f.avatar_url?<img src={f.avatar_url} alt="av"/>:f.emoji}</div>
                 <div className="feed-friend-share-info">
-                  <div className="feed-suggestion-name">{f.pet_name}</div>
+                  <div className={`feed-suggestion-name ${f.role === 'vet' ? 'vet-badge' : f.role === 'supplier' ? 'supplier-badge' : ''}`}>{f.pet_name}</div>
                   <div className="feed-suggestion-breed">by {f.owner_name}</div>
                 </div>
                 <button className="btn-primary" style={{padding:'6px 14px',fontSize:'0.78rem',borderRadius:10}} onClick={()=>shareToFriend(f,shareToFriendsModal)}>Send 📤</button>

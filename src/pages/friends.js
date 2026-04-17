@@ -24,7 +24,7 @@ export default function Friends() {
     setUser(session.user)
 
     const { data: petData } = await supabase
-      .from('pets').select('id,user_id,pet_name,emoji,avatar_url,paw_coins,pet_breed,owner_name').eq('user_id', session.user.id).eq('is_health_pet', false).single()
+      .from('pets').select('id,user_id,pet_name,emoji,avatar_url,paw_coins,pet_breed,owner_name,role').eq('user_id', session.user.id).eq('is_health_pet', false).single()
     setPet(petData)
 
     await fetchAll(session.user.id)
@@ -58,7 +58,7 @@ export default function Friends() {
     for (const req of requests) {
       const { data: senderPet } = await supabase
         .from('pets')
-        .select('id,user_id,pet_name,emoji,avatar_url,pet_breed,owner_name,location')
+        .select('id,user_id,pet_name,emoji,avatar_url,pet_breed,owner_name,location,role')
         .eq('user_id', req.sender_id)
         .eq('is_health_pet', false)
         .single()
@@ -89,7 +89,7 @@ export default function Friends() {
     for (const req of requests) {
       const { data: receiverPet } = await supabase
         .from('pets')
-        .select('id,user_id,pet_name,emoji,avatar_url,pet_breed,owner_name,location')
+        .select('id,user_id,pet_name,emoji,avatar_url,pet_breed,owner_name,location,role')
         .eq('user_id', req.receiver_id)
         .eq('is_health_pet', false)
         .single()
@@ -119,13 +119,13 @@ export default function Friends() {
 
     for (const req of (sent || [])) {
       const { data: friendPet } = await supabase
-        .from('pets').select('id,user_id,pet_name,emoji,avatar_url,pet_breed,owner_name').eq('user_id', req.receiver_id).eq('is_health_pet', false).single()
+        .from('pets').select('id,user_id,pet_name,emoji,avatar_url,pet_breed,owner_name,role').eq('user_id', req.receiver_id).eq('is_health_pet', false).single()
       if (friendPet) allFriends.push(friendPet)
     }
 
     for (const req of (received || [])) {
       const { data: friendPet } = await supabase
-        .from('pets').select('id,user_id,pet_name,emoji,avatar_url,pet_breed,owner_name').eq('user_id', req.sender_id).eq('is_health_pet', false).single()
+        .from('pets').select('id,user_id,pet_name,emoji,avatar_url,pet_breed,owner_name,role').eq('user_id', req.sender_id).eq('is_health_pet', false).single()
       if (friendPet) allFriends.push(friendPet)
     }
 
@@ -144,7 +144,7 @@ export default function Friends() {
       ...(receivedReqs || []).map(r => r.sender_id),
     ]
 
-    const { data: allPets } = await supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,pet_breed,owner_name,location').eq('is_health_pet', false).limit(30)
+    const { data: allPets } = await supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,pet_breed,owner_name,location,role').eq('is_health_pet', false).limit(30)
 
     const filtered = (allPets || []).filter(p => !excludedUserIds.includes(p.user_id))
     setSuggestions(filtered.slice(0, 8))
@@ -406,6 +406,7 @@ export default function Friends() {
                       <Avatar pet={req.receiverPet} size={72} borderColor='#6C4BF6' />
                     </div>
                     <div onClick={() => router.push(`/user/${req.receiver_id}`)}
+                      className={`${req.receiverPet?.role === 'vet' ? 'vet-badge' : req.receiverPet?.role === 'supplier' ? 'supplier-badge' : ''}`}
                       style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.05rem', marginTop: 10, cursor: 'pointer', color: '#1E1347' }}>
                       {req.receiverPet?.pet_name}
                     </div>
@@ -470,7 +471,7 @@ export default function Friends() {
                       style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}
                     >
                       <Avatar pet={friend} size={64} borderColor='#22C55E' />
-                      <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.95rem', marginTop: 8, color: '#1E1347' }}>
+                      <div className={`${friend.role === 'vet' ? 'vet-badge' : friend.role === 'supplier' ? 'supplier-badge' : ''}`} style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.95rem', marginTop: 8, color: '#1E1347' }}>
                         {friend.pet_name}
                       </div>
                       <div style={{ color: '#6B7280', fontSize: '0.75rem' }}>{friend.pet_breed}</div>
@@ -529,7 +530,7 @@ export default function Friends() {
                     onClick={() => router.push(`/user/${s.user_id}`)}
                     style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 18, textAlign: 'center', cursor: 'pointer' }}>
                     <Avatar pet={s} size={64} borderColor='#EDE8FF' />
-                    <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.95rem', marginTop: 8 }}>
+                    <div className={`${s.role === 'vet' ? 'vet-badge' : s.role === 'supplier' ? 'supplier-badge' : ''}`} style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.95rem', marginTop: 8 }}>
                       {s.pet_name}
                     </div>
                     <div style={{ color: '#6B7280', fontSize: '0.75rem' }}>{s.pet_breed}</div>

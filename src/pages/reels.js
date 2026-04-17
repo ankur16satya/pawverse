@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
+import SEO from '../components/SEO'
 import { uploadToCloudinary } from '../lib/cloudinary'
 
 export default function Reels() {
@@ -406,6 +407,10 @@ export default function Reels() {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#000', overflow: 'hidden' }}>
+      <SEO 
+        title="Pet Reels"
+        description="Watch the cutest short videos of pets on PawVerse Reels. Discover amazing talents, funny moments, and adorable clips of animals."
+      />
 
       {/* Prevent body scroll completely */}
       <style>{`

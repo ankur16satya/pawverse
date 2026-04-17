@@ -1078,3 +1078,31 @@ textarea { max-width: 100%; }
 @media (max-width: 768px) {
   .profile-wrapper { margin-top: 62px !important; }
 }
+
+/* 🩺 PROFESSIONAL ROLE BADGES */
+.vet-badge::after {
+  content: ' ⚕️';
+  font-size: 0.8em;
+  vertical-align: middle;
+}
+
+.supplier-badge::after {
+  content: ' 📦';
+  font-size: 0.8em;
+  vertical-align: middle;
+}
+
+.role-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  margin-left: 6px;
+}
+
+.role-tag.vet { background: #F3F0FF; color: #6C4BF6; }
+.role-tag.supplier { background: #E8F8E8; color: #22C55E; }
+

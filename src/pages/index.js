@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
+import SEO from '../components/SEO'
 
 const PET_TYPES = ['🐶 Dog','🐱 Cat','🐇 Rabbit','🦜 Bird','🐠 Fish','🐹 Hamster','🐍 Reptile','🐢 Turtle','🐾 Other']
+const VET_SPECIALIZATIONS = ['🩺 All Specialist', '🩺 General Vet', '🦷 Pet Surgeon', '🦴 Orthopedics', '🐕 Behavioral Expert', '🍎 Nutritionist', '🦎 Exotic Pets', '💉 Vaccination Clinic', '🏥 Hospital']
+const SUPPLIER_CATEGORIES = ['📦 All Categories', '🦴 Food & Nutrition', '🧶 Toys & Fun', '🧼 Grooming & Hygiene', '💊 Health & Meds', '🛌 Bedding & Furniture', '🎀 Accessories', '📦 Bulk Supplier']
+
 const PET_EMOJIS = { '🐶 Dog':'🐶','🐱 Cat':'🐱','🐇 Rabbit':'🐇','🦜 Bird':'🦜','🐠 Fish':'🐠','🐹 Hamster':'🐹','🐍 Reptile':'🐍','🐢 Turtle':'🐢','🐾 Other':'🐾' }
 const PAWS = Array.from({ length: 14 }, (_, i) => i)
 
@@ -17,6 +21,7 @@ export default function Home() {
   const [unconfirmedEmail, setUnconfirmedEmail] = useState('')
   const [resendLoading, setResendLoading] = useState(false)
 
+  const [role, setRole] = useState('user') // user, vet, supplier
   const [ownerName, setOwnerName] = useState('')
   const [nameSuggestions, setNameSuggestions] = useState([])
   const [checkingName, setCheckingName] = useState(false)
@@ -90,14 +95,15 @@ export default function Home() {
       await supabase.from('pets').insert({
         user_id: userId,
         owner_name: ownerName,
+        role: role, // Save the selected role
         pet_name: petName,
         pet_type: petType,
         pet_breed: petBreed,
         emoji,
-        paw_coins: 150,
+        paw_coins: role === 'user' ? 150 : 0, // Vets/Suppliers don't get signup coins by default
         bio: `Hi, I'm ${petName}! 🐾`,
         location: 'India',
-        is_health_pet: false,
+        is_health_pet: role === 'vet', // Legacy support for vet filter
       })
 
       const { error: loginErr } = await supabase.auth.signInWithPassword({ email, password })
@@ -233,6 +239,10 @@ export default function Home() {
   }
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #FFF0E8 0%, #F0EBFF 50%, #E8F8FF 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden', padding: '20px' }}>
+      <SEO 
+        title="Share Your Pet's World"
+        description="PawVerse is the ultimate social network for pets. Join thousands of pet parents, share moments, and connect with a loving community."
+      />
       {PAWS.map(i => (
         <span key={i} className="paw-float" style={{ left: `${(i * 7.2) % 100}%`, animationDuration: `${9 + (i % 5) * 1.8}s`, animationDelay: `${(i * 0.6) % 7}s`, fontSize: `${1.2 + (i % 4) * 0.5}rem`, opacity: 0.15 }}>🐾</span>
       ))}
@@ -262,30 +272,67 @@ export default function Home() {
             {error && <div style={{ background: '#FFDCE0', color: '#FF4757', padding: '8px 12px', borderRadius: 8, fontSize: '0.82rem', marginBottom: 8 }}>{error}</div>}
             {success && <div style={{ background: '#E8F8E8', color: '#22C55E', padding: '8px 12px', borderRadius: 8, fontSize: '0.82rem', marginBottom: 8 }}>{success}</div>}
             <form onSubmit={handleSignup}>
-              <label className="label">User name</label>
-              <input className="input" value={ownerName} onChange={e => { setOwnerName(e.target.value); clearTimeout(window._nameTimer); window._nameTimer = setTimeout(() => checkNameAvailability(e.target.value), 600) }} placeholder="e.g. Priya Sharma" required />
-              {checkingName && <div style={{ fontSize: '0.72rem', color: '#9CA3AF', marginTop: 3 }}>Checking availability...</div>}
-              {nameSuggestions.length > 0 && (
-                <div style={{ marginTop: 6 }}>
-                  <div style={{ fontSize: '0.72rem', color: '#FF4757', fontWeight: 700, marginBottom: 4 }}>⚠️ This name is taken! Try one of these:</div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {nameSuggestions.map(s => (
-                      <span key={s} onClick={() => { setOwnerName(s); setNameSuggestions([]) }}
-                        style={{ background: '#F0EBFF', border: '1px solid #6C4BF6', borderRadius: 20, padding: '3px 10px', fontSize: '0.75rem', fontWeight: 700, color: '#6C4BF6', cursor: 'pointer' }}>
-                        {s}
-                      </span>
-                    ))}
+              <label className="label">Account Type</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 16 }}>
+                {[
+                  { key: 'user', label: 'Parent', icon: '🐾' },
+                  { key: 'vet', label: 'Vet', icon: '🩺' },
+                  { key: 'supplier', label: 'Supplier', icon: '📦' },
+                ].map(r => (
+                  <div key={r.key} onClick={() => { 
+                    setRole(r.key); 
+                    setPetType(r.key === 'vet' ? VET_SPECIALIZATIONS[0] : r.key === 'supplier' ? SUPPLIER_CATEGORIES[0] : PET_TYPES[0]);
+                  }}
+                    style={{
+                      padding: '10px 4px', borderRadius: 12, border: '2px solid',
+                      borderColor: role === r.key ? '#6C4BF6' : '#EDE8FF',
+                      background: role === r.key ? '#F3F0FF' : '#fff',
+                      textAlign: 'center', cursor: 'pointer', transition: 'all 0.2s',
+                    }}>
+                    <div style={{ fontSize: '1.2rem', marginBottom: 2 }}>{r.icon}</div>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: role === r.key ? '#6C4BF6' : '#6B7280' }}>{r.label}</div>
                   </div>
-                </div>
-              )}
-              <label className="label">Your Pet's Name 🐾</label>
-              <input className="input" value={petName} onChange={e => setPetName(e.target.value)} placeholder="e.g. Whiskers" required />
-              <label className="label">Pet Type</label>
-              <select className="input" value={petType} onChange={e => setPetType(e.target.value)}>
-                {PET_TYPES.map(t => <option key={t}>{t}</option>)}
-              </select>
-              <label className="label">Pet Breed</label>
-              <input className="input" value={petBreed} onChange={e => setPetBreed(e.target.value)} placeholder="e.g. Persian, Labrador..." />
+                ))}
+              </div>
+
+              {(() => {
+                const labels = {
+                  user: { owner: 'User name', pet: "Your Pet's Name 🐾", type: "Pet Type", breed: "Pet Breed", petPlaceholder: "e.g. Whiskers", breedPlaceholder: "e.g. Persian, Labrador..." },
+                  vet: { owner: "Doctor's Name", pet: "Clinic/Hospital Name 🏥", type: "Primary Speciality", breed: "Qualifications / Education", petPlaceholder: "e.g. City Pet Clinic", breedPlaceholder: "e.g. BVSc & AH, Surgeon..." },
+                  supplier: { owner: "Contact Person", pet: "Shop/Business Name 📦", type: "Business Category", breed: "Operating Since / License No.", petPlaceholder: "e.g. PawVerse Supplies", breedPlaceholder: "e.g. Est. 2015, Lic #1234..." }
+                }[role];
+
+                return (
+                  <>
+                    <label className="label">{labels.owner}</label>
+                    <input className="input" value={ownerName} onChange={e => { setOwnerName(e.target.value); clearTimeout(window._nameTimer); window._nameTimer = setTimeout(() => checkNameAvailability(e.target.value), 600) }} placeholder="e.g. Priya Sharma" required />
+                    {checkingName && <div style={{ fontSize: '0.72rem', color: '#9CA3AF', marginTop: 3 }}>Checking availability...</div>}
+                    {nameSuggestions.length > 0 && (
+                      <div style={{ marginTop: 6 }}>
+                        <div style={{ fontSize: '0.72rem', color: '#FF4757', fontWeight: 700, marginBottom: 4 }}>⚠️ This name is taken! Try one of these:</div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {nameSuggestions.map(s => (
+                            <span key={s} onClick={() => { setOwnerName(s); setNameSuggestions([]) }}
+                              style={{ background: '#F0EBFF', border: '1px solid #6C4BF6', borderRadius: 20, padding: '3px 10px', fontSize: '0.75rem', fontWeight: 700, color: '#6C4BF6', cursor: 'pointer' }}>
+                              {s}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <label className="label">{labels.pet}</label>
+                    <input className="input" value={petName} onChange={e => setPetName(e.target.value)} placeholder={labels.petPlaceholder} required />
+                    <label className="label">{labels.type}</label>
+                    <select className="input" value={petType} onChange={e => setPetType(e.target.value)}>
+                      {role === 'user' ? PET_TYPES.map(t => <option key={t}>{t}</option>) :
+                       role === 'vet' ? VET_SPECIALIZATIONS.map(t => <option key={t}>{t}</option>) :
+                       SUPPLIER_CATEGORIES.map(t => <option key={t}>{t}</option>)}
+                    </select>
+                    <label className="label">{labels.breed}</label>
+                    <input className="input" value={petBreed} onChange={e => setPetBreed(e.target.value)} placeholder={labels.breedPlaceholder} />
+                  </>
+                )
+              })()}
               <label className="label">Email</label>
               <input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@email.com" required />
               <label className="label">Password</label>

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
+import SEO from '../components/SEO'
 import { uploadToCloudinary } from '../lib/cloudinary'
 
 const CATEGORIES = [
@@ -71,9 +72,22 @@ export default function Marketplace() {
     if (!session) { router.push('/'); return }
     setUser(session.user)
 
+    // Fetch ONLY the primary profile to avoid ambiguity if multiple exist
     const { data: petData } = await supabase
-      .from('pets').select('*').eq('user_id', session.user.id).single()
-    setPet(petData)
+      .from('pets')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .eq('is_health_pet', false) // Priority to main profile
+      .maybeSingle()
+    
+    // Fallback: If maybeSingle failed or returned multiple, just take the first one
+    if (!petData) {
+       const { data: allPets } = await supabase.from('pets').select('*').eq('user_id', session.user.id)
+       if (allPets && allPets.length > 0) setPet(allPets[0])
+       else setPet(null)
+    } else {
+       setPet(petData)
+    }
 
     const savedLocation = localStorage.getItem('pawverse_location')
     if (savedLocation) {
@@ -254,6 +268,13 @@ export default function Marketplace() {
     if (!form.city.trim()) { alert('Please enter city'); return }
     if (form.meant_for_list.length === 0) { alert('Please select at least one "Meant For" option'); return }
     if (form.is_service && !form.service_type) { alert('Please select service type'); return }
+
+    // ROLE SECURITY CHECK
+    if (pet?.role !== 'vet' && pet?.role !== 'supplier') {
+      alert('❌ Restricted: Only professional accounts (Vets & Suppliers) can list in the marketplace.')
+      return
+    }
+
     setSubmitting(true)
 
     try {
@@ -324,6 +345,10 @@ meant_for_list: form.meant_for_list.includes('Other')
 
   return (
     <div style={{ background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))', minHeight: '100vh' }}>
+      <SEO 
+        title="Pet Marketplace & Services"
+        description="Buy pet food, accessories, and toys, or find verified veterinary services near you in the PawVerse Marketplace."
+      />
       <NavBar user={user} pet={pet} />
 
       {/* Lightbox */}
@@ -577,6 +602,14 @@ meant_for_list: form.meant_for_list.includes('Other')
                 📍 Set Location
               </button>
             )}
+
+            {/* Role Debug/Indicator */}
+            <div style={{ marginTop: 10, padding: '8px 12px', background: '#F8F9FA', borderRadius: 8, border: '1px solid #E5E7EB' }}>
+              <div style={{ fontSize: '0.65rem', color: '#9CA3AF', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.5px' }}>Account Status</div>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: pet?.role === 'user' ? '#1E1347' : '#6C4BF6', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                 {pet?.role === 'vet' ? '🩺 Verified Vet' : pet?.role === 'supplier' ? '📦 Supplier' : '🐾 Pet Parent'}
+              </div>
+            </div>
           </div>
 
 
@@ -593,14 +626,21 @@ meant_for_list: form.meant_for_list.includes('Other')
             ))}
           </div>
 
-          {/* Sell Here */}
-          <div className="card" style={{ background: 'linear-gradient(135deg,#FFF0E8,#FFE0D5)', border: 'none' }}>
-            <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.9rem', marginBottom: 6 }}>🐾 Sell Here</div>
-            <p style={{ fontSize: '0.76rem', color: '#6B7280', marginBottom: 10 }}>List your pet products or services</p>
-            <button onClick={() => setShowCreateModal(true)} className="btn-primary" style={{ width: '100%', fontSize: '0.82rem', padding: '8px' }}>
-              + Create Listing
-            </button>
-          </div>
+          {/* Sell Here - Only for Suppliers and Vets */}
+          {(pet?.role === 'supplier' || pet?.role === 'vet') && (
+            <div className="card" style={{ background: 'linear-gradient(135deg,#FFF0E8,#FFE0D5)', border: 'none' }}>
+              <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.9rem', marginBottom: 6 }}>🐾 Sell Here</div>
+              <p style={{ fontSize: '0.76rem', color: '#6B7280', marginBottom: 10 }}>
+                {pet.role === 'vet' ? 'List your veterinary services' : 'List your pet products'}
+              </p>
+              <button onClick={() => {
+                setForm({ ...emptyForm, is_service: pet.role === 'vet', category: pet.role === 'vet' ? 'services' : 'food' })
+                setShowCreateModal(true)
+              }} className="btn-primary" style={{ width: '100%', fontSize: '0.82rem', padding: '8px' }}>
+                + {pet.role === 'vet' ? 'Add Service' : 'Create Listing'}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Main Content */}
@@ -684,11 +724,18 @@ meant_for_list: form.meant_for_list.includes('Other')
             <div className="card" style={{ textAlign: 'center', padding: 48 }}>
               <div style={{ fontSize: '3.5rem', marginBottom: 12 }}>🐾</div>
               <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.1rem', color: '#1E1347' }}>No listings found nearby</div>
-              <p style={{ color: '#6B7280', fontSize: '0.85rem', marginTop: 6 }}>Be the first to list in your area!</p>
-              <button onClick={() => setShowCreateModal(true)} className="btn-primary"
-                style={{ marginTop: 14, padding: '10px 24px', fontSize: '0.88rem', borderRadius: 10 }}>
-                + Create First Listing
-              </button>
+              <p style={{ color: '#6B7280', fontSize: '0.85rem', marginTop: 6 }}>
+                {pet?.role === 'vet' || pet?.role === 'supplier' 
+                  ? 'Be the first to list in your area!' 
+                  : 'Try expanding your search range or check back later! 🐾'}
+              </p>
+              
+              {(pet?.role === 'vet' || pet?.role === 'supplier') && (
+                <button onClick={() => setShowCreateModal(true)} className="btn-primary"
+                  style={{ marginTop: 14, padding: '10px 24px', fontSize: '0.88rem', borderRadius: 10 }}>
+                  + Create First Listing
+                </button>
+              )}
             </div>
           ) : (
             <div className="product-grid">
@@ -786,10 +833,15 @@ meant_for_list: form.meant_for_list.includes('Other')
         </div>
       )}
 
-      {/* Mobile FAB — Create Listing */}
-      <button className="marketplace-fab" onClick={() => setShowCreateModal(true)}>
-        ＋ Sell
-      </button>
+      {/* Mobile FAB — Create Listing (Only for Suppliers/Vets) */}
+      {(pet?.role === 'supplier' || pet?.role === 'vet') && (
+        <button className="marketplace-fab" onClick={() => {
+          setForm({ ...emptyForm, is_service: pet.role === 'vet', category: pet.role === 'vet' ? 'services' : 'food' })
+          setShowCreateModal(true)
+        }}>
+          ＋ Sell
+        </button>
+      )}
     </div>
   )
 }

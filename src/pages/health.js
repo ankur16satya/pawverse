@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import { subscribeUserToPush } from '../lib/push'
 import NavBar from '../components/NavBar'
+import SEO from '../components/SEO'
 import { uploadToCloudinary } from '../lib/cloudinary'
 
 const daysUntil = (d) => {
@@ -389,6 +390,8 @@ function PetHealthDashboard({ pet, user, router, onBack }) {
   const [medChecks, setMedChecks] = useState({})
   const [toast, setToast] = useState('')
   const [loading, setLoading] = useState(true)
+  const [practiceAppts, setPracticeAppts] = useState([])
+  const [myListing, setMyListing] = useState(null)
 
   const medicines = PET_MEDICINES[pet?.pet_type] || PET_MEDICINES.default
 
@@ -408,6 +411,16 @@ function PetHealthDashboard({ pet, user, router, onBack }) {
       const vaxList = vax || []
       setVaccines(vaxList)
       setWeightLog(wt || [])
+
+      // Fetch practice data if Vet
+      if (pet?.role === 'vet') {
+        const { data: listData } = await supabase.from('listings').select('*').eq('user_id', user.id).eq('is_service', true).eq('brand', 'Doctor').single()
+        setMyListing(listData)
+        if (listData) {
+          const { data: pAppts } = await supabase.from('appointments').select('*, pets(pet_name, owner_name, avatar_url, emoji)').eq('listing_id', listData.id).order('date', { ascending: true })
+          setPracticeAppts(pAppts || [])
+        }
+      }
       // Notifications
       const notifs = []
       vaxList.forEach(v => {
@@ -427,6 +440,53 @@ function PetHealthDashboard({ pet, user, router, onBack }) {
       setNotifications(notifs)
     } catch(e) { console.error('loadData error:', e) }
     setLoading(false)
+  }
+
+  const updateAppointmentStatus = async (appt, status) => {
+    try {
+      const { error } = await supabase.from('appointments').update({ status }).eq('id', appt.id)
+      if (error) throw error
+      
+      setPracticeAppts(prev => prev.map(a => a.id === appt.id ? { ...a, status } : a))
+      showToast(`Booking marked as ${status}`)
+
+      // Notify Client
+      try {
+        const { data: petInfo } = await supabase.from('pets').select('user_id').eq('id', appt.pet_id).single()
+        if (petInfo) {
+          await supabase.from('notifications').insert({
+            user_id: petInfo.user_id,
+            type: status === 'confirmed' ? 'friend_accepted' : 'like',
+            message: `${status === 'confirmed' ? '✅' : '❌'} Your appointment with ${myListing?.name || 'Dr.'} for ${new Date(appt.date).toLocaleDateString()} has been ${status}.|/profile`
+          })
+
+          fetch('/api/push', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user_id: petInfo.user_id,
+              title: `🩺 Appointment ${status.toUpperCase()}`,
+              body: `Your visit to ${myListing?.name || 'the doctor'} for ${new Date(appt.date).toLocaleDateString()} is now ${status}.`,
+              url: '/profile'
+            })
+          }).catch(e => console.error('Push failed:', e))
+        }
+      } catch (e) { console.error('Client Notif Failed:', e) }
+
+      // Email Notification
+      await fetch('/api/email', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          trigger: status === 'confirmed' ? 'APPROVED' : 'REJECTED',
+          adminEmail: 'ankur16satya@gmail.com',
+          doctorEmail: user.email, 
+          clientEmail: appt.client_email,
+          appointmentDetails: {
+            appointmentId: appt.id, doctorName: myListing?.name || 'Doctor', clientName: appt.pets?.owner_name,
+            date: appt.date, time: appt.time_slot, fees: myListing?.price
+          }
+        })
+      })
+    } catch (err) { alert('Failed to update status: ' + err.message) }
   }
 
   const handleSaveVaccine = async (form) => {
@@ -487,6 +547,11 @@ function PetHealthDashboard({ pet, user, router, onBack }) {
     ['visits','🏥','Visits'],
   ]
 
+  // Add Practice tab ONLY for Vets
+  if (pet?.role === 'vet') {
+    tabItems.push(['practice', '⚕️', 'My Practice'])
+  }
+
   const doneVax    = vaccines.filter(v => getVaccineStatus(v.next_due)==='done').length
   const overdueVax = vaccines.filter(v => getVaccineStatus(v.next_due)==='overdue').length
   const latestW    = weightLog.length ? weightLog[weightLog.length-1]?.weight_kg : null
@@ -502,8 +567,10 @@ function PetHealthDashboard({ pet, user, router, onBack }) {
 
       {/* Hero */}
       <div className="card" style={{ background: 'linear-gradient(135deg,#3B82F6,#6C4BF6)', border: 'none', padding: '18px 20px' }}>
-        <div style={{ color:'#fff', fontFamily:"'Baloo 2',cursive", fontWeight:800, fontSize:'1.15rem', marginBottom:2 }}>🩺 {pet?.pet_name}'s Health</div>
-        <div style={{ color:'rgba(255,255,255,0.8)', fontSize:'0.8rem', marginBottom:12 }}>Vaccines · Weight · Meds — all in one place</div>
+        <div style={{ color:'#fff', fontFamily:"'Baloo 2',cursive", fontWeight:800, fontSize:'1.15rem', marginBottom:2 }}>🩺 {pet?.pet_name}'s {pet?.role === 'vet' ? 'Professional Dashboard' : 'Health'}</div>
+        <div style={{ color:'rgba(255,255,255,0.8)', fontSize:'0.8rem', marginBottom:12 }}>
+          {pet?.role === 'vet' ? 'Manage your practice and pet health in one place' : 'Vaccines · Weight · Meds — all in one place'}
+        </div>
         <div className="ph-stat-grid">
           {[
             ['Vaccines', `${doneVax}/${vaccines.length}`, '💉'],
@@ -687,12 +754,68 @@ function PetHealthDashboard({ pet, user, router, onBack }) {
         </div>
       )}
 
+      {/* PRACTICE (Vet only) */}
+      {tab === 'practice' && pet?.role === 'vet' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Practice Overview */}
+          <div className="card" style={{ background: 'linear-gradient(135deg, #1E1347, #6C4BF6)', border: 'none', color: '#fff' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.2rem' }}>👨‍⚕️ Practice Manager</div>
+                <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>Manage your professional profile and bookings</div>
+              </div>
+              <button onClick={() => router.push('/marketplace')} className="btn-primary" style={{ background: '#fff', color: '#6C4BF6', fontSize: '0.75rem', padding: '6px 12px' }}>View on Market</button>
+            </div>
+          </div>
+
+          <div className="card">
+            <h3 style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.05rem', color: '#1E1347', marginBottom: 16 }}>📅 Booking Requests</h3>
+            {practiceAppts.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '30px 0', color: '#9CA3AF' }}>
+                <div style={{ fontSize: '2.5rem', marginBottom: 10 }}>📅</div>
+                <div style={{ fontWeight: 800 }}>No requests yet</div>
+                <div style={{ fontSize: '0.75rem' }}>Active booking requests from clients will appear here</div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {practiceAppts.map(appt => (
+                  <div key={appt.id} style={{ display: 'flex', alignItems: 'center', padding: '12px', border: '1.5px solid #F3F0FF', borderRadius: 14, background: appt.status === 'pending' ? '#FFFBF7' : '#fff' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                      <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#F3F0FF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', overflow: 'hidden', flexShrink: 0 }}>
+                        {appt.pets?.avatar_url ? <img src={appt.pets.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="av" /> : (appt.pets?.emoji || '🐾')}
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#1E1347' }}>{appt.pets?.pet_name}</div>
+                        <div style={{ fontSize: '0.68rem', color: '#6B7280' }}>{new Date(appt.date).toLocaleDateString()} · {appt.time_slot}</div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {appt.status === 'pending' ? (
+                        <>
+                          <button onClick={() => updateAppointmentStatus(appt, 'confirmed')} style={{ padding: '6px 10px', border: 'none', background: '#22C55E', color: '#fff', borderRadius: 10, fontWeight: 800, fontSize: '0.7rem', cursor: 'pointer' }}>✓ Accept</button>
+                          <button onClick={() => updateAppointmentStatus(appt, 'rejected')} style={{ padding: '6px 10px', border: 'none', background: '#FFF0F0', color: '#FF4757', borderRadius: 10, fontWeight: 800, fontSize: '0.7rem', cursor: 'pointer' }}>✕</button>
+                        </>
+                      ) : (
+                        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: appt.status === 'confirmed' ? '#22C55E' : '#FF4757', background: appt.status === 'confirmed' ? '#E8F8E8' : '#FFF0F0', padding: '4px 10px', borderRadius: 20 }}>
+                          {appt.status === 'confirmed' ? '✅ Confirmed' : '❌ Rejected'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {showVaccineModal && (
         <VaccineModal pet={pet} editData={editVaccine} onClose={()=>{setShowVaccineModal(false);setEditVaccine(null)}} onSave={handleSaveVaccine} />
       )}
       {showWeightModal && (
         <WeightModal pet={pet} onClose={()=>setShowWeightModal(false)} onSave={handleSaveWeight} />
       )}
+
 
       {toast && (
         <div style={{ position:'fixed', bottom:90, right:16, left:16, maxWidth:360, margin:'0 auto', background:'#1E1347', color:'#fff', padding:'12px 18px', borderRadius:14, fontWeight:700, fontSize:'0.86rem', zIndex:3000, textAlign:'center', boxShadow:'0 8px 24px rgba(0,0,0,0.25)', animation:'slideUp 0.3s ease' }}>{toast}</div>
@@ -845,7 +968,11 @@ export default function Health() {
 
   return (
     <div style={{ background:'linear-gradient(135deg,rgba(213,134,200,1),rgba(105,201,249,1))', minHeight:'100vh' }}>
-      <NavBar user={user} pet={pets[0]} />
+      <SEO 
+        title="Pet Health & Records"
+        description="Track your pet's vaccines, weight, and medical history. Access digital health records and manage veterinary appointments in PawVerse."
+      />
+      <NavBar user={user} pet={activePet || pets[0]} />
 
       <div className="health-container" style={{ position: 'relative' }}>
         {/* Enable / Refresh Notification Button */}

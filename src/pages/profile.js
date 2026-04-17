@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
+import SEO from '../components/SEO'
 import { uploadToCloudinary } from '../lib/cloudinary'
 
 export default function Profile() {
@@ -247,6 +248,10 @@ export default function Profile() {
   }
   return (
     <div style={{ background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))', minHeight: '100vh' }}>
+      <SEO 
+        title={`${pet?.pet_name || 'My Pet'}'s Profile`}
+        description={`Check out ${pet?.pet_name}'s profile on PawVerse! Join the social universe for your fur family.`}
+      />
       <NavBar user={user} pet={pet} />
 
       <style>{`
@@ -405,11 +410,13 @@ export default function Profile() {
         <div className="profile-body">
           <div className="profile-info-row">
             <div>
-              <h1 style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: 'clamp(1.2rem, 4vw, 1.65rem)', margin: 0 }}>
+              <h1 className={`${pet.role === 'vet' ? 'vet-badge' : pet.role === 'supplier' ? 'supplier-badge' : ''}`} style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: 'clamp(1.2rem, 4vw, 1.65rem)', margin: 0 }}>
                 {pet.pet_name} {pet.emoji || '🐾'}
               </h1>
-              <p style={{ color: '#000000ff', fontSize: '0.86rem', marginTop: 2 }}>
+              <p style={{ color: '#000000ff', fontSize: '0.86rem', marginTop: 2, display: 'flex', alignItems: 'center' }}>
                 {pet.pet_breed} · Managed by {pet.owner_name}
+                {pet.role === 'vet' && <span className="role-tag vet">Verified Vet</span>}
+                {pet.role === 'supplier' && <span className="role-tag supplier">Supplier</span>}
               </p>
               {!editing && (
                 <div style={{ marginTop: 6 }}>

@@ -13,7 +13,12 @@ export default function SuperAdmin() {
   const [loading, setLoading] = useState(true)
   const [doctors, setDoctors] = useState([])
   const [appointments, setAppointments] = useState([])
-  const [activeTab, setActiveTab] = useState('doctors')
+  const [allPets, setAllPets] = useState([])
+  const [listings, setListings] = useState([])
+  const [activeTab, setActiveTab] = useState('analytics')
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false)
+  const [adminPassInput, setAdminPassInput] = useState('')
+  const [passError, setPassError] = useState('')
 
   useEffect(() => { init() }, [])
 
@@ -29,13 +34,33 @@ export default function SuperAdmin() {
     }
     setUser(session.user)
 
-    // Fetch Doctors and ALL Appointments perfectly
-    const { data: docs } = await supabase.from('listings').select('*, pets(owner_name, avatar_url)').eq('is_service', true).eq('brand', 'Doctor').order('created_at', { ascending: false })
+    // Fetch Analytics Data
+    const { data: pets } = await supabase.from('pets').select('*')
+    const { data: listData } = await supabase.from('listings').select('*, pets(owner_name, avatar_url, role)')
     const { data: appts } = await supabase.from('appointments').select('*, listings(name, price), pets(owner_name)').order('created_at', { ascending: false })
 
-    setDoctors(docs || [])
+    setAllPets(pets || [])
+    setListings(listData || [])
     setAppointments(appts || [])
+    setDoctors((listData || []).filter(l => l.is_service && l.brand === 'Doctor'))
     setLoading(false)
+  }
+
+  const handlePasswordSubmit = (e) => {
+    e.preventDefault()
+    if (adminPassInput === 'Ankur@1990') {
+      setIsAdminAuthenticated(true)
+      setPassError('')
+    } else {
+      setPassError('❌ Incorrect Admin Password!')
+    }
+  }
+
+  const roleCounts = {
+    total: allPets.length,
+    user: allPets.filter(p => !p.role || p.role === 'user').length,
+    vet: allPets.filter(p => p.role === 'vet').length,
+    supplier: allPets.filter(p => p.role === 'supplier').length,
   }
 
   const verifyPayment = async (id) => {
@@ -50,35 +75,150 @@ export default function SuperAdmin() {
   if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontSize: '2rem' }}>🐾</div>
 
   return (
-    <div style={{ background: '#FFFBF7', minHeight: '100vh' }}>
+    <div style={{ background: '#FFFBF7', minHeight: '100vh', position: 'relative' }}>
+      
+      {/* 🔐 PASSWORD OVERLAY */}
+      {!isAdminAuthenticated && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(12px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: '#fff', padding: 40, borderRadius: 24, boxShadow: '0 20px 60px rgba(0,0,0,0.15)', width: '100%', maxWidth: 400, textAlign: 'center', border: '1.5px solid #EDE8FF' }}>
+            <div style={{ fontSize: '3.5rem', marginBottom: 15 }}>👑</div>
+            <h2 style={{ fontFamily: "Baloo 2", fontSize: '1.8rem', color: '#1E1347', marginBottom: 8 }}>Restricted Access</h2>
+            <p style={{ color: '#6B7280', fontSize: '0.9rem', marginBottom: 25 }}>Please enter the Super Admin Key to manage PawVerse ecosystem.</p>
+            
+            <form onSubmit={handlePasswordSubmit}>
+              <input 
+                type="password" 
+                className="input" 
+                placeholder="Enter Admin Password..." 
+                value={adminPassInput} 
+                onChange={e => setAdminPassInput(e.target.value)}
+                autoFocus
+                style={{ textAlign: 'center', fontSize: '1.1rem', letterSpacing: '4px', padding: 14, marginBottom: 12 }}
+              />
+              {passError && <div style={{ color: '#FF4757', fontWeight: 800, fontSize: '0.82rem', marginBottom: 15 }}>{passError}</div>}
+              
+              <button className="btn-primary" style={{ width: '100%', padding: '14px', borderRadius: 14, fontSize: '1rem' }}>
+                Verify Key →
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       <NavBar user={user} />
 
       <div style={{ maxWidth: 1100, margin: '80px auto', padding: 20 }}>
         
         <div style={{ background: 'linear-gradient(135deg, #1E1347, #6C4BF6)', borderRadius: 16, padding: '30px', color: '#fff', marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 10px 30px rgba(108, 75, 246, 0.2)' }}>
            <div>
-             <h1 style={{ fontFamily: "'Baloo 2', cursive", fontSize: '2.5rem', margin: '0 0 5px' }}>👑 Super Admin</h1>
-             <p style={{ margin: 0, opacity: 0.8, fontSize: '0.9rem' }}>You have absolute control over Pawverse Doctors & Payments.</p>
+             <h1 style={{ fontFamily: "'Baloo 2', cursive", fontSize: '2.5rem', margin: '0 0 5px' }}>👑 Admin Center</h1>
+             <p style={{ margin: 0, opacity: 0.8, fontSize: '0.9rem' }}>Comprehensive monitoring of PawVerse Roles, Services & Products.</p>
            </div>
-           <div style={{ display: 'flex', gap: 20, textAlign: 'center' }}>
-              <div style={{ background: 'rgba(255,255,255,0.1)', padding: '10px 20px', borderRadius: 12 }}>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{doctors.length}</div>
-                <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', opacity: 0.8, letterSpacing: 1 }}>Doctors</div>
+           <div style={{ display: 'flex', gap: 15, textAlign: 'center' }}>
+              <div style={{ background: 'rgba(255,255,255,0.1)', padding: '10px 18px', borderRadius: 12 }}>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800 }}>{allPets.length}</div>
+                <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', opacity: 0.8 }}>Total Users</div>
               </div>
-              <div style={{ background: 'rgba(255,255,255,0.1)', padding: '10px 20px', borderRadius: 12 }}>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{appointments.length}</div>
-                <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', opacity: 0.8, letterSpacing: 1 }}>Global Bookings</div>
+              <div style={{ background: 'rgba(255,255,255,0.1)', padding: '10px 18px', borderRadius: 12 }}>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800 }}>{roleCounts.vet}</div>
+                <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', opacity: 0.8 }}>Vets</div>
+              </div>
+              <div style={{ background: 'rgba(255,255,255,0.1)', padding: '10px 18px', borderRadius: 12 }}>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800 }}>{roleCounts.supplier}</div>
+                <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', opacity: 0.8 }}>Suppliers</div>
               </div>
            </div>
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
-          <button onClick={() => setActiveTab('doctors')} style={{ flex: 1, padding: '14px', border: 'none', borderRadius: 12, background: activeTab === 'doctors' ? '#FF6B35' : '#fff', color: activeTab === 'doctors' ? '#fff' : '#6B7280', fontFamily: 'Nunito, sans-serif', fontWeight: 800, fontSize: '1rem', cursor: 'pointer', boxShadow: '0 4px 15px rgba(0,0,0,0.05)' }}>🏥 Manage Doctors</button>
-          <button onClick={() => setActiveTab('payments')} style={{ flex: 1, padding: '14px', border: 'none', borderRadius: 12, background: activeTab === 'payments' ? '#FF6B35' : '#fff', color: activeTab === 'payments' ? '#fff' : '#6B7280', fontFamily: 'Nunito, sans-serif', fontWeight: 800, fontSize: '1rem', cursor: 'pointer', boxShadow: '0 4px 15px rgba(0,0,0,0.05)' }}>💰 Payments & UTRs {appointments.filter(a => a.payment_status === 'paid').length > 0 && `(Verify ${appointments.filter(a => a.payment_status === 'paid').length})`}</button>
+        <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+          {[
+            { id: 'analytics', label: '📊 Dashboard', color: '#FF6B35' },
+            { id: 'doctors', label: '🩺 Vet Services', color: '#6C4BF6' },
+            { id: 'suppliers', label: '📦 Marketplace', color: '#22C55E' },
+            { id: 'payments', label: '💰 UTR Verify', color: '#FF4757' },
+          ].map(t => (
+            <button key={t.id} onClick={() => setActiveTab(t.id)} 
+              style={{ flex: 1, minWidth: 150, padding: '14px', border: 'none', borderRadius: 12, background: activeTab === t.id ? t.color : '#fff', color: activeTab === t.id ? '#fff' : '#6B7280', fontFamily: 'Nunito, sans-serif', fontWeight: 800, fontSize: '0.9rem', cursor: 'pointer', boxShadow: '0 4px 15px rgba(0,0,0,0.05)', transition: 'all 0.2s' }}>
+              {t.label}
+            </button>
+          ))}
         </div>
 
-        {/* Doctors View - WITH LIVE STATS */}
+        {/* Analytics View */}
+        {activeTab === 'analytics' && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
+            {/* Simple Users */}
+            <div className="card" style={{ padding: 24, textAlign: 'center' }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: 10 }}>🐾</div>
+              <h3 style={{ fontFamily: "Baloo 2", fontSize: '1.4rem', color: '#1E1347', margin: 0 }}>Pet Parents</h3>
+              <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#FF6B35' }}>{roleCounts.user}</div>
+              <p style={{ fontSize: '0.82rem', color: '#6B7280' }}>Daily users browsing feed & reels</p>
+            </div>
+            {/* Vets */}
+            <div className="card" style={{ padding: 24, textAlign: 'center' }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: 10 }}>🩺</div>
+              <h3 style={{ fontFamily: "Baloo 2", fontSize: '1.4rem', color: '#1E1347', margin: 0 }}>Verified Vets</h3>
+              <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#6C4BF6' }}>{roleCounts.vet}</div>
+              <p style={{ fontSize: '0.82rem', color: '#6B7280' }}>Medical experts providing services</p>
+            </div>
+            {/* Suppliers */}
+            <div className="card" style={{ padding: 24, textAlign: 'center' }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: 10 }}>📦</div>
+              <h3 style={{ fontFamily: "Baloo 2", fontSize: '1.4rem', color: '#1E1347', margin: 0 }}>Suppliers</h3>
+              <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#22C55E' }}>{roleCounts.supplier}</div>
+              <p style={{ fontSize: '0.82rem', color: '#6B7280' }}>Verified marketplace product sellers</p>
+            </div>
+
+            {/* Price Watch */}
+            <div className="card" style={{ gridColumn: 'span 3', padding: 24 }}>
+               <h3 style={{ fontFamily: "Baloo 2", color: '#1E1347', marginBottom: 16 }}>💰 Marketplace Listings (Latest Activity)</h3>
+               <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                   <thead>
+                     <tr style={{ color: '#9CA3AF', fontSize: '0.75rem', borderBottom: '1.5px solid #F3F0FF' }}>
+                       <th style={{ padding: '8px 0' }}>PRODUCT/SERVICE</th>
+                       <th>SELLER TYPE</th>
+                       <th>SELLER NAME</th>
+                       <th>PRICE</th>
+                     </tr>
+                   </thead>
+                   <tbody>
+                     {listings.slice(0, 10).map(l => (
+                       <tr key={l.id} style={{ borderBottom: '1px solid #F3F0FF', fontSize: '0.85rem' }}>
+                         <td style={{ padding: '12px 0', fontWeight: 700, color: '#1E1347' }}>{l.name}</td>
+                         <td>
+                           <span style={{ fontSize: '0.65rem', padding: '3px 8px', borderRadius: 20, background: l.pets?.role === 'vet' ? '#F3F0FF' : '#E8F8E8', color: l.pets?.role === 'vet' ? '#6C4BF6' : '#22C55E', fontWeight: 800 }}>
+                             {l.pets?.role?.toUpperCase() || 'USER'}
+                           </span>
+                         </td>
+                         <td style={{ color: '#6B7280' }}>{l.pets?.owner_name}</td>
+                         <td style={{ fontWeight: 800, color: '#FF6B35' }}>₹{l.price}</td>
+                       </tr>
+                     ))}
+                   </tbody>
+                 </table>
+               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Suppliers View */}
+        {activeTab === 'suppliers' && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+            {listings.filter(l => l.pets?.role === 'supplier' || (!l.is_service && l.pets?.role !== 'vet')).map(prod => (
+              <div key={prod.id} className="card" style={{ padding: 16 }}>
+                 <img src={prod.image_url} style={{ width: '100%', height: 140, objectFit: 'cover', borderRadius: 8, marginBottom: 12 }} />
+                 <div style={{ fontWeight: 800, color: '#1E1347', fontSize: '0.95rem' }}>{prod.name}</div>
+                 <div style={{ fontSize: '0.75rem', color: '#6B7280', marginBottom: 8 }}>Seller: {prod.pets?.owner_name}</div>
+                 <div style={{ fontSize: '1rem', fontWeight: 900, color: '#22C55E' }}>₹{prod.price}</div>
+                 <div style={{ marginTop: 10, fontSize: '0.65rem', color: '#9CA3AF' }}>Listing ID: {prod.id}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Doctors View */}
         {activeTab === 'doctors' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
              {doctors.map(doc => {

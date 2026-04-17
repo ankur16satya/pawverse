@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
+import SEO from '../components/SEO'
 import { uploadToCloudinary } from '../lib/cloudinary'
 
 export default function Adopt() {
@@ -223,6 +224,10 @@ export default function Adopt() {
 
   return (
      <div style={{ background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))',padding:'30px', minHeight: '100vh',}}>
+      <SEO 
+        title="Adopt a Pet"
+        description="Find your forever friend on the PawVerse Adoption Board. Browse dogs, cats, and other pets looking for a loving home."
+      />
       <NavBar user={user} pet={pet} />
       <div style={{ maxWidth: 1060, margin: '70px auto 0', padding: 14 }}>
         <div className="card" style={{ background: 'linear-gradient(135deg,#2DD4BF,#6C4BF6)', border: 'none', padding: 22, marginBottom: 16, display: 'flex', flexWrap: 'wrap', justifyContent:'space-between', alignItems: 'center' }}>

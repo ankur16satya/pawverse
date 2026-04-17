@@ -259,11 +259,13 @@ setFriends(friendList)
         <div style={{ padding: '40px 24px 0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
             <div>
-              <h1 style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.6rem', color: '#1E1347' }}>
+              <h1 className={`${profilePet.role === 'vet' ? 'vet-badge' : profilePet.role === 'supplier' ? 'supplier-badge' : ''}`} style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.6rem', color: '#1E1347' }}>
                 {profilePet.pet_name} {profilePet.emoji || '🐾'}
               </h1>
-              <p style={{ color: '#6B7280', fontSize: '0.86rem', marginTop: 2 }}>
+              <p style={{ color: '#6B7280', fontSize: '0.86rem', marginTop: 2, display: 'flex', alignItems: 'center' }}>
                 {profilePet.pet_breed} · Managed by {profilePet.owner_name}
+                {profilePet.role === 'vet' && <span className="role-tag vet">Verified Vet</span>}
+                {profilePet.role === 'supplier' && <span className="role-tag supplier">Supplier</span>}
               </p>
               <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {[['📍', profilePet.location || 'PawVerse'], ['🪙', `${profilePet.paw_coins || 0} PawCoins`]].map(([ic, tx]) => (

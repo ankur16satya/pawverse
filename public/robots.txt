@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://pawversesocial.com/sitemap.xml
+
+# Disallowed paths
+Disallow: /api/
+Disallow: /superadmin
+Disallow: /pay/
+Disallow: /chat
+Disallow: /coins
+Disallow: /cart
