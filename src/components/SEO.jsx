@@ -36,6 +36,7 @@ export default function SEO({
       <meta name="keywords" content={seoKeywords} />
       <meta name="robots" content="index, follow" />
       <link rel="canonical" href={seoCanonical} />
+      <meta name="google-site-verification" content="53Zgy0JFDm-WXa0dbyKUuovurmvp9Id-zsPLW84ueio" />
 
       {/* Open Graph / Facebook */}
       <meta property="og:type" content={seoType} />

@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
 import SEO from '../components/SEO'
 import { uploadToCloudinary } from '../lib/cloudinary'
-<meta name="google-site-verification" content="53Zgy0JFDm-WXa0dbyKUuovurmvp9Id-zsPLW84ueio" />
+
 
 const FEELINGS = ['😀 Happy','😍 Loved','🥳 Excited','😎 Cool','😢 Sad','😤 Annoyed','🤔 Thoughtful','🥺 Grateful','🔥 Hyped','😴 Tired','🤒 Sick','🥰 Blessed']
 const POPULAR_LOCATIONS = ['Mumbai, India','Delhi, India','Bengaluru, India','Chennai, India','Hyderabad, India','Pune, India','Kolkata, India','Jaipur, India','Dehradun, India','Chandigarh, India']
