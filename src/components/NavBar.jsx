@@ -409,10 +409,10 @@ export default function NavBar({ user, pet }) {
                       onMouseEnter={e => e.currentTarget.style.background = '#F9F5FF'}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                       <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#F0EBFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', border: '1.5px solid #EDE8FF', overflow: 'hidden', flexShrink: 0 }}>
-                        {p.avatar_url ? <img src={p.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="av" /> : p.emoji}
+                        {p.avatar_url ? <img src={p.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="av" /> : (p.role?.toLowerCase() === 'vet' ? '🩺' : p.role?.toLowerCase() === 'supplier' ? '📦' : p.emoji || '🐾')}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#1E1347', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.owner_name}</div>
+                        <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#1E1347', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} className={p.role?.toLowerCase() === 'vet' ? 'vet-badge' : p.role?.toLowerCase() === 'supplier' ? 'supplier-badge' : ''}>{p.owner_name}</div>
                         <div style={{ fontSize: '0.7rem', color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.pet_name} · {p.pet_breed || 'Pet'}</div>
                       </div>
                       {p.user_id === user?.id ? (
@@ -622,10 +622,10 @@ export default function NavBar({ user, pet }) {
                 {/* Pet mini header */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'linear-gradient(135deg,#F9F5FF,#FFF0E8)', borderRadius: 14, marginBottom: 12 }}>
                   <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#FFE8F0', border: '3px solid #FF6B35', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', overflow: 'hidden', flexShrink: 0 }}>
-                    {pet?.avatar_url ? <img src={pet.avatar_url} alt="av" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : pet?.emoji || '🐾'}
+                    {pet?.avatar_url ? <img src={pet.avatar_url} alt="av" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (pet?.role?.toLowerCase() === 'vet' ? '🩺' : pet?.role?.toLowerCase() === 'supplier' ? '📦' : pet?.emoji || '🐾')}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.95rem', color: '#1E1347' }}>{pet?.pet_name || 'My Pet'}</div>
+                    <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '0.95rem', color: '#1E1347' }} className={pet?.role?.toLowerCase() === 'vet' ? 'vet-badge' : pet?.role?.toLowerCase() === 'supplier' ? 'supplier-badge' : ''}>{pet?.pet_name || 'My Pet'}</div>
                     <div style={{ fontSize: '0.72rem', color: '#6B7280' }}>🪙 {pet?.paw_coins ?? 0} PawCoins</div>
                   </div>
                   <div style={{ fontSize: '0.7rem', color: '#6C4BF6', fontWeight: 700 }}>Tap to view →</div>

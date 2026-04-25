@@ -184,20 +184,47 @@ export default function Feed() {
     const userId = session.user.id
 
     // Run all fetches in parallel for faster load
-    const [
-      petResult,
-      othersResult,
-      sReqsResult,
-      rReqsResult,
-    ] = await Promise.all([
-      supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,paw_coins,pet_breed,owner_name,is_health_pet,role').eq('user_id', userId).eq('is_health_pet', false).maybeSingle(),
+    // Robust pet fetching: Get all pets and find the primary social one
+    const [allPetsRes, othersResult, sReqsResult, rReqsResult] = await Promise.all([
+      supabase.from('pets').select('*').eq('user_id', userId),
       supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,pet_breed,owner_name,role').neq('user_id', userId).eq('is_health_pet', false).limit(6),
       supabase.from('friend_requests').select('receiver_id,status').eq('sender_id', userId),
       supabase.from('friend_requests').select('sender_id,status').eq('receiver_id', userId),
     ])
 
-    const petData = petResult.data
-    if (petData) setPet(petData)
+    const allPets = allPetsRes.data
+    let petData = (allPets || []).find(p => !p.is_health_pet)
+    const hiddenVet = (allPets || []).find(p => p.is_health_pet && (p.role === 'vet' || p.role === 'supplier'))
+
+    if (hiddenVet && !petData) {
+      await supabase.from('pets').update({ is_health_pet: false }).eq('id', hiddenVet.id)
+      petData = { ...hiddenVet, is_health_pet: false }
+    } else if (hiddenVet && petData) {
+      if (petData.role === 'user' && hiddenVet.role !== 'user') {
+        await supabase.from('pets').update({ is_health_pet: false }).eq('id', hiddenVet.id)
+        petData = { ...hiddenVet, is_health_pet: false }
+      }
+    }
+
+    if (petData) {
+      // PROACTIVE SELF-HEALING:
+      // If the name clearly implies a Vet/Supplier but role is stuck as 'user', fix it!
+      const name = (petData.pet_name || '').toLowerCase()
+      const currentRole = (petData.role || 'user').toLowerCase()
+      
+      if (currentRole === 'user') {
+        let newRole = null
+        if (name.includes('vet') || name.includes('hospital') || name.includes('clinic') || name.includes('doctor')) newRole = 'vet'
+        else if (name.includes('shop') || name.includes('store') || name.includes('supply') || name.includes('pet store')) newRole = 'supplier'
+        
+        if (newRole) {
+          console.log(`Auto-upgrading ${petData.pet_name} to ${newRole}...`)
+          await supabase.from('pets').update({ role: newRole, is_health_pet: false }).eq('id', petData.id)
+          petData.role = newRole
+        }
+      }
+      setPet(petData)
+    }
     setSuggestions(othersResult.data || [])
 
     const sReqs = sReqsResult.data || []
@@ -242,8 +269,9 @@ export default function Feed() {
     let reelQuery = supabase.from('reels').select(`*, pets${isVet ? '!inner' : ''}(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id, is_health_pet, role)`).order('created_at', { ascending: false }).limit(FETCH_LIMIT)
 
     if (isVet) {
-      postQuery = postQuery.eq('pets.is_health_pet', true)
-      reelQuery = reelQuery.eq('pets.is_health_pet', true)
+      // Explicitly filter by joined table role (case-insensitive where possible)
+      postQuery = postQuery.ilike('pets.role', 'vet')
+      reelQuery = reelQuery.ilike('pets.role', 'vet')
     }
 
     if (isAppending && lastTimestamp) {
@@ -454,7 +482,7 @@ export default function Feed() {
           views: 0,
           audio_url: postMusic?.url || null, 
           audio_name: postMusic ? JSON.stringify({id: postMusic.id, title: postMusic.title, artist: postMusic.artist, cover: postMusic.cover, start: postMusicStart}) : null
-        }).select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id)').single()
+        }).select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id, is_health_pet, role)').single()
         console.log("Supabase reel insert result:", { data, error })
         if (error) throw error
         
@@ -487,7 +515,7 @@ export default function Feed() {
           pet_id:pet.id, content:postText, image_url:imageUrl, hidden:false, edited:false,
           location:postLocation||null, feeling:postFeeling||null, hashtags:hashtags.length>0?hashtags:null,
           audio_url: postMusic?.url || null, audio_name: postMusic ? JSON.stringify({id: postMusic.id, title: postMusic.title, artist: postMusic.artist, cover: postMusic.cover, start: postMusicStart}) : null
-        }).select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id)').single()
+        }).select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id, is_health_pet, role)').single()
         console.log("Supabase post insert result:", { data, error })
         if (error) throw error
         
@@ -746,9 +774,9 @@ export default function Feed() {
             <div className="feed-profile-banner" />
             <div className="feed-profile-body">
               <div className="feed-profile-avatar" onClick={()=>router.push('/profile')}>
-                {pet?.avatar_url ? <img src={pet.avatar_url} alt="avatar" /> : pet?.emoji||'🐾'}
+                {pet?.avatar_url ? <img src={pet.avatar_url} alt="avatar" /> : (pet?.role?.toLowerCase() === 'vet' ? '🩺' : pet?.role?.toLowerCase() === 'supplier' ? '📦' : pet?.emoji || '🐾')}
               </div>
-              <div className="feed-profile-name">{pet?.pet_name}</div>
+              <div className={`feed-profile-name ${pet?.role === 'vet' ? 'vet-badge' : pet?.role === 'supplier' ? 'supplier-badge' : ''}`}>{pet?.pet_name}</div>
               <div className="feed-profile-breed">{pet?.pet_breed}</div>
               <div className="feed-profile-owner">by {pet?.owner_name}</div>
               <div className="feed-coins-badge" onClick={()=>router.push('/coins')}>
@@ -958,10 +986,10 @@ export default function Feed() {
 
                 <div className="feed-post-header">
                   <div className={`feed-post-avatar${!isMyPost?' clickable':''}`} onClick={()=>!isMyPost&&router.push(`/user/${post.pets?.user_id}`)}>
-                    {post.pets?.avatar_url?<img src={post.pets.avatar_url} alt="avatar"/>:post.pets?.emoji||'🐾'}
+                    {post.pets?.avatar_url?<img src={post.pets.avatar_url} alt="avatar"/>:(post.pets?.role?.toLowerCase() === 'vet' ? '🩺' : post.pets?.role?.toLowerCase() === 'supplier' ? '📦' : post.pets?.emoji||'🐾')}
                   </div>
                   <div className="feed-post-meta">
-                    <div className={`feed-post-petname${!isMyPost?' clickable':''} ${post.pets?.role === 'vet' ? 'vet-badge' : post.pets?.role === 'supplier' ? 'supplier-badge' : ''}`} onClick={()=>!isMyPost&&router.push(`/user/${post.pets?.user_id}`)}>
+                    <div className={`feed-post-petname${!isMyPost?' clickable':''} ${post.pets?.role?.toLowerCase() === 'vet' ? 'vet-badge' : post.pets?.role?.toLowerCase() === 'supplier' ? 'supplier-badge' : ''}`} onClick={()=>!isMyPost&&router.push(`/user/${post.pets?.user_id}`)}>
                       {post.pets?.pet_name||'A Pet'}
                     </div>
                     <div className="feed-post-submeta">
@@ -1133,7 +1161,7 @@ export default function Feed() {
                             <div className="feed-replies">
                               {comment.replies.map(reply=>(
                                 <div key={reply.id} className="feed-reply">
-                                  <div className="feed-reply-avatar">{reply.pets?.avatar_url?<img src={reply.pets.avatar_url} alt="avatar"/>:reply.pets?.emoji||'🐾'}</div>
+                                  <div className="feed-reply-avatar">{reply.pets?.avatar_url?<img src={reply.pets.avatar_url} alt="avatar"/>:(reply.pets?.role?.toLowerCase() === 'vet' ? '🩺' : reply.pets?.role?.toLowerCase() === 'supplier' ? '📦' : reply.pets?.emoji||'🐾')}</div>
                                   <div className="feed-reply-bubble">
                                     <div className="feed-comment-name">{reply.pets?.pet_name}</div>
                                     <p className="feed-comment-text">{reply.content}</p>
@@ -1171,7 +1199,7 @@ export default function Feed() {
             {suggestions.map(s=>(
               <div key={s.id} className="feed-suggestion-row">
                 <div className="feed-suggestion-avatar" onClick={()=>s.user_id!==user.id&&router.push(`/user/${s.user_id}`)}>
-                  {s.avatar_url?<img src={s.avatar_url} alt="avatar"/>:s.emoji}
+                  {s.avatar_url?<img src={s.avatar_url} alt="avatar"/>:(s.role?.toLowerCase() === 'vet' ? '🩺' : s.role?.toLowerCase() === 'supplier' ? '📦' : s.emoji||'🐾')}
                 </div>
                 <div className="feed-suggestion-info">
                   <div className={`feed-suggestion-name ${s.role === 'vet' ? 'vet-badge' : s.role === 'supplier' ? 'supplier-badge' : ''}`} onClick={()=>s.user_id!==user.id&&router.push(`/user/${s.user_id}`)}>{s.pet_name}</div>

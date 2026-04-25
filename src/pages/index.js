@@ -103,7 +103,7 @@ export default function Home() {
         paw_coins: role === 'user' ? 150 : 0, // Vets/Suppliers don't get signup coins by default
         bio: `Hi, I'm ${petName}! 🐾`,
         location: 'India',
-        is_health_pet: role === 'vet', // Legacy support for vet filter
+        is_health_pet: false, // Social profiles should always be false
       })
 
       const { error: loginErr } = await supabase.auth.signInWithPassword({ email, password })

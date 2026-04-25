@@ -252,7 +252,7 @@ setFriends(friendList)
           }}>
             {profilePet.avatar_url
               ? <img src={profilePet.avatar_url} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              : profilePet.emoji || '🐾'}
+              : (profilePet.role?.toLowerCase() === 'vet' ? '🩺' : profilePet.role?.toLowerCase() === 'supplier' ? '📦' : profilePet.emoji || '🐾')}
           </div>
         </div>
 
@@ -260,7 +260,7 @@ setFriends(friendList)
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
             <div>
               <h1 className={`${profilePet.role === 'vet' ? 'vet-badge' : profilePet.role === 'supplier' ? 'supplier-badge' : ''}`} style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.6rem', color: '#1E1347' }}>
-                {profilePet.pet_name} {profilePet.emoji || '🐾'}
+                {profilePet.pet_name} {(!profilePet.role || profilePet.role === 'user') && (profilePet.emoji || '🐾')}
               </h1>
               <p style={{ color: '#6B7280', fontSize: '0.86rem', marginTop: 2, display: 'flex', alignItems: 'center' }}>
                 {profilePet.pet_breed} · Managed by {profilePet.owner_name}

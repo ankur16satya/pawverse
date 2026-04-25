@@ -72,21 +72,42 @@ export default function Marketplace() {
     if (!session) { router.push('/'); return }
     setUser(session.user)
 
-    // Fetch ONLY the primary profile to avoid ambiguity if multiple exist
-    const { data: petData } = await supabase
+    // Fetch all pets and prioritize the professional one
+    const { data: allPets } = await supabase
       .from('pets')
       .select('*')
       .eq('user_id', session.user.id)
-      .eq('is_health_pet', false) // Priority to main profile
-      .maybeSingle()
     
-    // Fallback: If maybeSingle failed or returned multiple, just take the first one
-    if (!petData) {
-       const { data: allPets } = await supabase.from('pets').select('*').eq('user_id', session.user.id)
-       if (allPets && allPets.length > 0) setPet(allPets[0])
-       else setPet(null)
-    } else {
-       setPet(petData)
+    let petData = null
+    if (allPets && allPets.length > 0) {
+      // Sort: Professional Social Profiles > Standard Social Profiles > Hidden Profiles
+      const sorted = allPets.sort((a,b) => {
+        const score = (p) => {
+          let s = 0
+          if (!p.is_health_pet) s += 10
+          if (p.role === 'vet') s += 5
+          if (p.role === 'supplier') s += 3
+          return s
+        }
+        return score(b) - score(a)
+      })
+      petData = sorted[0]
+    }
+
+    if (petData) {
+      // PROACTIVE SELF-HEALING:
+      const name = (petData.pet_name || '').toLowerCase()
+      const currentRole = (petData.role || 'user').toLowerCase()
+      if (currentRole === 'user') {
+        let newRole = null
+        if (name.includes('vet') || name.includes('hospital') || name.includes('clinic') || name.includes('doctor')) newRole = 'vet'
+        else if (name.includes('shop') || name.includes('store') || name.includes('supply') || name.includes('pet store')) newRole = 'supplier'
+        if (newRole) {
+          await supabase.from('pets').update({ role: newRole, is_health_pet: false }).eq('id', petData.id)
+          petData.role = newRole
+        }
+      }
+      setPet(petData)
     }
 
     const savedLocation = localStorage.getItem('pawverse_location')
@@ -606,8 +627,8 @@ meant_for_list: form.meant_for_list.includes('Other')
             {/* Role Debug/Indicator */}
             <div style={{ marginTop: 10, padding: '8px 12px', background: '#F8F9FA', borderRadius: 8, border: '1px solid #E5E7EB' }}>
               <div style={{ fontSize: '0.65rem', color: '#9CA3AF', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.5px' }}>Account Status</div>
-              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: pet?.role === 'user' ? '#1E1347' : '#6C4BF6', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                 {pet?.role === 'vet' ? '🩺 Verified Vet' : pet?.role === 'supplier' ? '📦 Supplier' : '🐾 Pet Parent'}
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: pet?.role?.toLowerCase() === 'user' ? '#1E1347' : '#6C4BF6', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                 {pet?.role?.toLowerCase() === 'vet' ? '🩺 Verified Vet' : pet?.role?.toLowerCase() === 'supplier' ? '📦 Supplier' : '🐾 Pet Parent'}
               </div>
             </div>
           </div>

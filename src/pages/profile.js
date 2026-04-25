@@ -5,6 +5,10 @@ import NavBar from '../components/NavBar'
 import SEO from '../components/SEO'
 import { uploadToCloudinary } from '../lib/cloudinary'
 
+const VET_SPECIALIZATIONS = ['🩺 All Specialist', '🩺 General Vet', '🦷 Pet Surgeon', '🦴 Orthopedics', '🐕 Behavioral Expert', '🍎 Nutritionist', '🦎 Exotic Pets', '💉 Vaccination Clinic', '🏥 Hospital']
+const SUPPLIER_CATEGORIES = ['📦 All Categories', '🦴 Food & Nutrition', '🧶 Toys & Fun', '🧼 Grooming & Hygiene', '💊 Health & Meds', '🛌 Bedding & Furniture', '🎀 Accessories', '📦 Bulk Supplier']
+
+
 export default function Profile() {
   const router = useRouter()
   const [user, setUser] = useState(null)
@@ -23,7 +27,7 @@ export default function Profile() {
   const avatarInputRef = useRef(null)
 
   const [creatingPet, setCreatingPet] = useState(false)
-  const [petForm, setPetForm] = useState({ owner_name: '', pet_name: '', pet_type: '🐶 Dog', pet_breed: '' })
+  const [petForm, setPetForm] = useState({ owner_name: '', pet_name: '', pet_type: '🐶 Dog', pet_breed: '', role: 'user' })
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session }, error: sessionError }) => {
@@ -40,13 +44,17 @@ export default function Profile() {
       setUser(session.user)
 
       const fetchUserContent = (fetchPetId) => {
-        supabase.from('posts').select('*, comments(count)').eq('pet_id', fetchPetId).order('created_at', { ascending: false }).limit(100).then(({ data, error }) => {
+        // Fetch posts for ALL of user's pets to avoid "0 posts" when multiple records exist
+        const petIds = (allPets || []).map(p => p.id)
+        if (petIds.length === 0) petIds.push(fetchPetId)
+
+        supabase.from('posts').select('*, comments(count)').in('pet_id', petIds).order('created_at', { ascending: false }).limit(100).then(({ data, error }) => {
           if (error) console.error('Profile posts fetch error:', error)
           else console.log('Profile posts:', data?.length)
           setPosts((data || []).map(p => ({ ...p, comments_count: p.comments?.[0]?.count || 0 })))
         })
-        // NOTE: reels has no FK to comments - omit that join
-        supabase.from('reels').select('*').eq('pet_id', fetchPetId).order('created_at', { ascending: false }).limit(100).then(({ data, error }) => {
+        
+        supabase.from('reels').select('*').in('pet_id', petIds).order('created_at', { ascending: false }).limit(100).then(({ data, error }) => {
           if (error) console.error('Profile reels fetch error:', error)
           else console.log('Profile reels:', data?.length)
           setReels((data || []).map(r => ({ ...r, comments_count: 0 })))
@@ -70,17 +78,37 @@ export default function Profile() {
 
       fetchFriends(session.user.id)
 
-      // Try to fetch existing pet
-      const { data: existingPet } = await supabase.from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).maybeSingle()
+      // Robust pet fetching: Get all pets and find the primary social one
+      const { data: allPets } = await supabase.from('pets').select('*').eq('user_id', session.user.id)
+      
+      // Sort: Vets first, then Suppliers, then others. Prefer Social over Health.
+      const sortedPets = (allPets || []).sort((a, b) => {
+        const score = (p) => {
+          let s = 0
+          if (!p.is_health_pet) s += 10
+          if (p.role === 'vet') s += 5
+          if (p.role === 'supplier') s += 3
+          return s
+        }
+        return score(b) - score(a)
+      })
 
-      if (existingPet) {
-        setPet(existingPet)
-        setForm(existingPet)
-        if (existingPet.avatar_url) setAvatarPreview(existingPet.avatar_url)
+      let primaryPet = sortedPets[0]
+
+      // If we found a hidden professional profile but our current primary is just a 'user', fix the professional one!
+      if (primaryPet && primaryPet.is_health_pet && (primaryPet.role === 'vet' || primaryPet.role === 'supplier')) {
+        await supabase.from('pets').update({ is_health_pet: false }).eq('id', primaryPet.id)
+        primaryPet.is_health_pet = false
+      }
+
+      if (primaryPet) {
+        setPet(primaryPet)
+        setForm(primaryPet)
+        if (primaryPet.avatar_url) setAvatarPreview(primaryPet.avatar_url)
         setLoading(false)
-        fetchUserContent(existingPet.id)
+        fetchUserContent(primaryPet.id)
       } else {
-        // Try to auto-create from localStorage (set during signup)
+        // Try to auto-create from localStorage...
         const pending = localStorage.getItem('pending_pet')
         if (pending) {
           try {
@@ -134,6 +162,7 @@ export default function Profile() {
       paw_coins: 150,
       bio: `Hi, I'm ${petForm.pet_name}! 🐾`,
       location: 'India',
+      role: petForm.role || 'user',
       is_health_pet: false,
     }).select().single()
     if (error) {
@@ -186,15 +215,23 @@ export default function Profile() {
 
   const saveProfile = async () => {
     setSaving(true)
-    await supabase.from('pets')
-      .update({
-        bio: form.bio,
-        location: form.location,
-        pet_breed: form.pet_breed
-      })
+    const updateData = {
+      bio: form.bio,
+      location: form.location,
+      pet_breed: form.pet_breed,
+      role: form.role || 'user',
+      is_health_pet: false
+    }
+    const { error } = await supabase.from('pets')
+      .update(updateData)
       .eq('id', pet.id)
-    setPet({ ...pet, ...form })
-    setEditing(false)
+    
+    if (error) {
+      alert('Error saving profile: ' + error.message)
+    } else {
+      setPet({ ...pet, ...updateData })
+      setEditing(false)
+    }
     setSaving(false)
   }
 
@@ -220,13 +257,35 @@ export default function Profile() {
       <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.3rem', color: '#1E1347' }}>Complete Your Profile</div>
       <p style={{ color: '#6B7280', fontSize: '0.88rem', maxWidth: 320, margin: 0 }}>Your pet profile wasn't saved during signup. Fill in the details below to get started!</p>
       <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 400, textAlign: 'left', boxShadow: '0 4px 24px rgba(108,75,246,0.1)' }}>
+        <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>Account Type</label>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
+          {[
+            { key: 'user', label: 'Parent', icon: '🐾' },
+            { key: 'vet', label: 'Vet', icon: '🩺' },
+            { key: 'supplier', label: 'Supplier', icon: '📦' },
+          ].map(r => (
+            <div key={r.key} onClick={() => setPetForm({ ...petForm, role: r.key, pet_type: r.key === 'vet' ? VET_SPECIALIZATIONS[0] : r.key === 'supplier' ? SUPPLIER_CATEGORIES[0] : '🐶 Dog' })}
+              style={{
+                padding: '8px 4px', borderRadius: 10, border: '2px solid',
+                borderColor: petForm.role === r.key ? '#6C4BF6' : '#EDE8FF',
+                background: petForm.role === r.key ? '#F3F0FF' : '#fff',
+                textAlign: 'center', cursor: 'pointer', transition: 'all 0.2s',
+              }}>
+              <div style={{ fontSize: '1rem' }}>{r.icon}</div>
+              <div style={{ fontSize: '0.65rem', fontWeight: 800, color: petForm.role === r.key ? '#6C4BF6' : '#6B7280' }}>{r.label}</div>
+            </div>
+          ))}
+        </div>
+
         <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>Your Name</label>
         <input value={petForm.owner_name} onChange={e => setPetForm(p => ({...p, owner_name: e.target.value}))} placeholder="e.g. Priya Sharma" style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1.5px solid #EDE8FF', fontFamily: 'Nunito, sans-serif', fontSize: '0.88rem', boxSizing: 'border-box', outline: 'none', marginBottom: 12 }} />
         <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>Pet's Name 🐾</label>
         <input value={petForm.pet_name} onChange={e => setPetForm(p => ({...p, pet_name: e.target.value}))} placeholder="e.g. Whiskers" style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1.5px solid #EDE8FF', fontFamily: 'Nunito, sans-serif', fontSize: '0.88rem', boxSizing: 'border-box', outline: 'none', marginBottom: 12 }} />
         <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>Pet Type</label>
         <select value={petForm.pet_type} onChange={e => setPetForm(p => ({...p, pet_type: e.target.value}))} style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1.5px solid #EDE8FF', fontFamily: 'Nunito, sans-serif', fontSize: '0.88rem', boxSizing: 'border-box', outline: 'none', marginBottom: 12 }}>
-          {PET_TYPES.map(t => <option key={t}>{t}</option>)}
+          {petForm.role === 'user' ? PET_TYPES.map(t => <option key={t}>{t}</option>) :
+           petForm.role === 'vet' ? VET_SPECIALIZATIONS.map(t => <option key={t}>{t}</option>) :
+           SUPPLIER_CATEGORIES.map(t => <option key={t}>{t}</option>)}
         </select>
         <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>Breed (optional)</label>
         <input value={petForm.pet_breed} onChange={e => setPetForm(p => ({...p, pet_breed: e.target.value}))} placeholder="e.g. Persian, Labrador..." style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1.5px solid #EDE8FF', fontFamily: 'Nunito, sans-serif', fontSize: '0.88rem', boxSizing: 'border-box', outline: 'none', marginBottom: 16 }} />
@@ -367,7 +426,7 @@ export default function Profile() {
                 ) : avatarPreview ? (
                   <img src={avatarPreview} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
-                  pet.emoji || '🐾'
+                  pet.role?.toLowerCase() === 'vet' ? '🩺' : pet.role?.toLowerCase() === 'supplier' ? '📦' : pet.emoji || '🐾'
                 )}
               </div>
               {/* Camera button */}
@@ -410,13 +469,13 @@ export default function Profile() {
         <div className="profile-body">
           <div className="profile-info-row">
             <div>
-              <h1 className={`${pet.role === 'vet' ? 'vet-badge' : pet.role === 'supplier' ? 'supplier-badge' : ''}`} style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: 'clamp(1.2rem, 4vw, 1.65rem)', margin: 0 }}>
-                {pet.pet_name} {pet.emoji || '🐾'}
+              <h1 className={`${pet.role?.toLowerCase() === 'vet' ? 'vet-badge' : pet.role?.toLowerCase() === 'supplier' ? 'supplier-badge' : ''}`} style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: 'clamp(1.2rem, 4vw, 1.65rem)', margin: 0 }}>
+                {pet.pet_name} {(!pet.role || pet.role === 'user') && (pet.emoji || '🐾')}
               </h1>
               <p style={{ color: '#000000ff', fontSize: '0.86rem', marginTop: 2, display: 'flex', alignItems: 'center' }}>
                 {pet.pet_breed} · Managed by {pet.owner_name}
-                {pet.role === 'vet' && <span className="role-tag vet">Verified Vet</span>}
-                {pet.role === 'supplier' && <span className="role-tag supplier">Supplier</span>}
+                {pet.role?.toLowerCase() === 'vet' && <span className="role-tag vet">Verified Vet</span>}
+                {pet.role?.toLowerCase() === 'supplier' && <span className="role-tag supplier">Supplier</span>}
               </p>
               {!editing && (
                 <div style={{ marginTop: 6 }}>
@@ -446,8 +505,29 @@ export default function Profile() {
               <label className="label">Location</label>
               <input className="input" value={form.location || ''} onChange={e => setForm({ ...form, location: e.target.value })}
                 placeholder="e.g. Dehradun, Uttarakhand" />
-              <label className="label">Breed</label>
+              <label className="label">Breed / Qualifications</label>
               <input className="input" value={form.pet_breed || ''} onChange={e => setForm({ ...form, pet_breed: e.target.value })} />
+              
+              <label className="label">Account Type</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 16 }}>
+                {[
+                  { key: 'user', label: 'Parent', icon: '🐾' },
+                  { key: 'vet', label: 'Vet', icon: '🩺' },
+                  { key: 'supplier', label: 'Supplier', icon: '📦' },
+                ].map(r => (
+                  <div key={r.key} onClick={() => setForm({ ...form, role: r.key })}
+                    style={{
+                      padding: '10px 4px', borderRadius: 12, border: '2px solid',
+                      borderColor: form.role === r.key ? '#6C4BF6' : '#EDE8FF',
+                      background: form.role === r.key ? '#F3F0FF' : '#fff',
+                      textAlign: 'center', cursor: 'pointer', transition: 'all 0.2s',
+                    }}>
+                    <div style={{ fontSize: '1.2rem', marginBottom: 2 }}>{r.icon}</div>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: form.role === r.key ? '#6C4BF6' : '#6B7280' }}>{r.label}</div>
+                  </div>
+                ))}
+              </div>
+
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                 <button className="btn-primary" onClick={saveProfile} disabled={saving}>
                   {saving ? 'Saving...' : 'Save Changes'}
