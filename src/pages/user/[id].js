@@ -3,6 +3,8 @@ import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
 import NavBar from '../../components/NavBar'
 import SEO from '../../components/SEO'
+
+export default function UserProfile() {
   const router = useRouter()
   const { id } = router.query
   const [user, setUser] = useState(null)
