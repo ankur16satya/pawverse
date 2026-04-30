@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
 import NavBar from '../../components/NavBar'
-
-export default function PostPage() {
+import SEO from '../../components/SEO'
   const router = useRouter()
   const { id } = router.query
   const [user, setUser] = useState(null)
@@ -164,6 +163,16 @@ export default function PostPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, rgba(213,134,200,1), rgba(105,201,249,1))', paddingTop: 110 }}>
+      {/* Issue 4.4: Per-post SEO for social sharing */}
+      {post && (
+        <SEO
+          title={`${post.pets?.pet_name || 'Pet'}'s post on PawVerse`}
+          description={post.caption ? post.caption.slice(0, 155) : `See ${post.pets?.pet_name || 'a pet'}'s post on PawVerse — India's pet social network.`}
+          ogImage={post.media_url || post.image_url}
+          ogType={post.is_reel ? 'video.other' : 'article'}
+          canonical={`https://pawversesocial.com/post/${post.id}`}
+        />
+      )}
       {user && <NavBar user={user} pet={pet} />}
 
       {/* If not logged in, show a top banner */}

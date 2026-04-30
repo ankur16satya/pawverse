@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
+import Head from 'next/head'
 import NavBar from '../../components/NavBar'
+import SEO from '../../components/SEO'
 
 export default function ListingDetail() {
   const router = useRouter()
@@ -223,6 +225,44 @@ export default function ListingDetail() {
 
   return (
     <div style={{ background: '#FFFBF7', minHeight: '100vh' }}>
+      {/* Issue 4.4 + 2.6: Per-listing SEO and Product schema */}
+      {listing && (
+        <>
+          <SEO
+            title={`${listing.name}${listing.brand ? ` by ${listing.brand}` : ''} | PawVerse Marketplace`}
+            description={listing.description ? listing.description.slice(0, 155) : `Buy ${listing.name} on PawVerse — India's pet marketplace.`}
+            ogImage={listing.image_url || listing.image_urls?.[0]}
+            ogType="product"
+            canonical={`https://pawversesocial.com/listing/${listing.id}`}
+          />
+          <Head>
+            <script
+              type="application/ld+json"
+              dangerouslySetInnerHTML={{
+                __html: JSON.stringify({
+                  "@context": "https://schema.org",
+                  "@type": listing.is_service ? "Service" : "Product",
+                  "name": listing.name,
+                  "description": listing.description || listing.name,
+                  "image": listing.image_url || listing.image_urls?.[0] || 'https://pawversesocial.com/logo.png',
+                  "url": `https://pawversesocial.com/listing/${listing.id}`,
+                  "brand": listing.brand ? { "@type": "Brand", "name": listing.brand } : undefined,
+                  "offers": {
+                    "@type": "Offer",
+                    "price": listing.price || 0,
+                    "priceCurrency": "INR",
+                    "availability": "https://schema.org/InStock",
+                    "seller": {
+                      "@type": "Organization",
+                      "name": listing.pets?.owner_name || 'PawVerse Seller'
+                    }
+                  }
+                })
+              }}
+            />
+          </Head>
+        </>
+      )}
       <NavBar user={user} pet={pet} />
 
       {/* Lightbox */}

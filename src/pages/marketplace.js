@@ -367,8 +367,9 @@ meant_for_list: form.meant_for_list.includes('Other')
   return (
     <div style={{ background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))', minHeight: '100vh' }}>
       <SEO 
-        title="Pet Marketplace & Services"
-        description="Buy pet food, accessories, and toys, or find verified veterinary services near you in the PawVerse Marketplace."
+        title="Online Pet Marketplace India | Pet Food, Accessories & Vet Services"
+        description="Shop the PawVerse pet marketplace — buy pet food, accessories, grooming products and book verified veterinary services near you in India."
+        keywords="online pet marketplace India, buy pet food online, pet accessories India, vet services Dehradun, pet grooming India, pet shop online"
       />
       <NavBar user={user} pet={pet} />
 
@@ -865,4 +866,9 @@ meant_for_list: form.meant_for_list.includes('Other')
       )}
     </div>
   )
+}
+
+// Issue 2.2: Enable SSR for public page
+export async function getServerSideProps() {
+  return { props: {} }
 }

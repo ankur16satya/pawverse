@@ -240,8 +240,9 @@ export default function Home() {
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #FFF0E8 0%, #F0EBFF 50%, #E8F8FF 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden', padding: '20px' }}>
       <SEO 
-        title="Share Your Pet's World"
-        description="PawVerse is the ultimate social network for pets. Join thousands of pet parents, share moments, and connect with a loving community."
+        title="PawVerse — India's Pet Social Network | Adopt, Shop & Connect"
+        description="Join PawVerse — India's all-in-one pet community. Adopt dogs & cats near you, shop the pet marketplace, track health records & connect with Dehradun's pet parents."
+        keywords="pet social network India, pet adoption India, adopt dog Dehradun, adopt cat India, pet marketplace India, pet health tracker, PawVerse"
       />
       {PAWS.map(i => (
         <span key={i} className="paw-float" style={{ left: `${(i * 7.2) % 100}%`, animationDuration: `${9 + (i % 5) * 1.8}s`, animationDelay: `${(i * 0.6) % 7}s`, fontSize: `${1.2 + (i % 4) * 0.5}rem`, opacity: 0.15 }}>🐾</span>

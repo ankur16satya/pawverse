@@ -27,8 +27,9 @@ export default function Blogs() {
   return (
     <div style={{ background: '#FFFBF7', minHeight: '100vh', paddingBottom: 60 }}>
       <SEO 
-        title="PawVerse Blog | Expert Pet Advice & Stories"
-        description="Explore the PawVerse blog for the best tips on pet health, training, nutrition, and heartwarming rescue stories. Your guide to better pet parenting."
+        title="Pet Health & Care Blog India | Expert Vet Advice"
+        description="Expert pet health tips, dog & cat care guides, vaccination schedules, and heartwarming rescue stories. Written by veterinary professionals for pet parents in India."
+        keywords="pet health tips India, dog care guide, cat care India, dog vaccination schedule India, best vet advice, pet nutrition India, PawVerse blog"
       />
       <NavBar />
       
@@ -121,4 +122,10 @@ export default function Blogs() {
       `}</style>
     </div>
   )
+}
+
+
+// Issue 2.2: SSR for blog index so Google can index it
+export async function getServerSideProps() {
+  return { props: {} }
 }

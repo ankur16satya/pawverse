@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
 import NavBar from '../../components/NavBar'
-
-export default function UserProfile() {
+import SEO from '../../components/SEO'
   const router = useRouter()
   const { id } = router.query
   const [user, setUser] = useState(null)
@@ -226,6 +225,14 @@ setFriends(friendList)
 
   return (
     <div style={{ background: '#FFFBF7', minHeight: '100vh' }}>
+      {/* Issue 4.4: Per-profile SEO for social sharing */}
+      <SEO
+        title={`${profilePet?.owner_name || 'Pet Parent'} & ${profilePet?.pet_name || 'Pet'} on PawVerse`}
+        description={`Follow ${profilePet?.pet_name || 'this pet'} on PawVerse — India's pet social network. ${profilePet?.pet_type ? `Meet this adorable ${profilePet.pet_type}.` : ''}`}
+        ogImage={profilePet?.avatar_url}
+        canonical={`https://pawversesocial.com/user/${id}`}
+        noindex={true}
+      />
       <NavBar user={user} pet={pet} />
 
       {/* Lightbox */}

@@ -1,13 +1,22 @@
+# PawVerse Social — robots.txt
+# Updated for SEO: Issue 2.5 & 3.3
+
 User-agent: *
 Allow: /
 
-# Sitemap
-Sitemap: https://pawversesocial.com/sitemap.xml
-
-# Disallowed paths
+# Private / App routes — do not crawl
 Disallow: /api/
+Disallow: /_next/
+Disallow: /auth/
+Disallow: /dashboard/
+Disallow: /settings/
 Disallow: /superadmin
 Disallow: /pay/
 Disallow: /chat
 Disallow: /coins
 Disallow: /cart
+Disallow: /profile/edit
+Disallow: /doctor/admin
+
+# Sitemap location
+Sitemap: https://pawversesocial.com/sitemap.xml

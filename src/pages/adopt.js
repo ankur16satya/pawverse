@@ -225,8 +225,9 @@ export default function Adopt() {
   return (
      <div style={{ background: 'linear-gradient(135deg, rgba(213, 134, 200, 1), rgba(105, 201, 249, 1))',padding:'30px', minHeight: '100vh',}}>
       <SEO 
-        title="Adopt a Pet"
-        description="Find your forever friend on the PawVerse Adoption Board. Browse dogs, cats, and other pets looking for a loving home."
+        title="Pet Adoption in India | Adopt Dogs & Cats Near You"
+        description="Find your forever furry friend on PawVerse Adoption Board. Browse dogs, cats, rabbits and more looking for a loving home in Dehradun and across India."
+        keywords="pet adoption India, adopt dog Dehradun, adopt cat near me, rescue dog India, pet adoption board, free pet adoption, adopt puppy India"
       />
       <NavBar user={user} pet={pet} />
       <div style={{ maxWidth: 1060, margin: '70px auto 0', padding: 14 }}>
@@ -464,4 +465,11 @@ export default function Adopt() {
       {toast && <div style={{ position: 'fixed', bottom: 22, left: '50%', transform: 'translateX(-50%)', background: '#1E1347', color: '#fff', padding: '12px 24px', borderRadius: 30, fontWeight: 700, fontSize: '0.9rem', zIndex: 3000, boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>{toast}</div>}
     </div>
   )
+}
+
+// Issue 2.2: Enable SSR for public page so Googlebot can read meta tags
+export async function getServerSideProps() {
+  return {
+    props: {},
+  }
 }
