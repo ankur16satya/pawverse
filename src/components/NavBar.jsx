@@ -365,7 +365,7 @@ export default function NavBar({ user, pet }) {
         data-pawverse-nav
         style={{
           position: 'fixed', top: 0, left: 0, right: 0,
-          height: 98,
+          height: isMobile ? 62 : 98,
           background: 'linear-gradient(135deg, #edeceaff, #a4caf3ff)',
           borderBottom: '1px solid #EDE8FF',
           boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
@@ -374,20 +374,20 @@ export default function NavBar({ user, pet }) {
         }}>
 
         {/* Logo */}
-        <div onClick={() => router.push('/feed')} style={{ cursor: 'pointer', flexShrink: 0, transform: isMobile ? 'scale(1.4)' : 'scale(1.2)', marginLeft: isMobile ? 10 : 0 }}>
+        <div onClick={() => router.push('/feed')} style={{ cursor: 'pointer', flexShrink: 0, transform: isMobile ? 'scale(1)' : 'scale(1.2)', marginLeft: isMobile ? 0 : 0 }}>
           <img src="/logo.png" alt="logo"
-            style={{ height: 100, width: 'auto', padding: '10px', objectFit: 'contain' }} />
+            style={{ height: isMobile ? 70 : 100, width: 'auto', padding: isMobile ? '4px' : '10px', objectFit: 'contain' }} />
         </div>
 
         {/* Search Bar */}
-        <div ref={searchRef} style={{ position: 'relative', flexShrink: 0, width: 220 }} className="navbar-search">
-          <div style={{ display: 'flex', alignItems: 'center', background: '#F3F0FF', borderRadius: 24, padding: '6px 14px', gap: 8, border: showSearch ? '1.5px solid #6C4BF6' : '1.5px solid transparent', transition: 'border 0.2s' }}>
-            <Search size={15} color="#6C4BF6" />
+        <div ref={searchRef} style={{ position: 'relative', flexShrink: 0, width: isMobile ? 'auto' : 220 }} className="navbar-search">
+          <div style={{ display: 'flex', alignItems: 'center', background: '#F3F0FF', borderRadius: 24, padding: isMobile ? '5px 10px' : '6px 14px', gap: 6, border: showSearch ? '1.5px solid #6C4BF6' : '1.5px solid transparent', transition: 'border 0.2s' }}>
+            <Search size={isMobile ? 14 : 15} color="#6C4BF6" />
             <input
               value={searchQuery}
               onChange={e => handleSearch(e.target.value)}
               onFocus={() => searchQuery && setShowSearch(true)}
-              placeholder="Search pets & friends..."
+              placeholder="Search..."
               style={{ background: 'none', border: 'none', outline: 'none', fontFamily: 'Nunito, sans-serif', fontSize: '0.82rem', color: '#1E1347', width: '100%' }}
             />
             {searchQuery && (
@@ -549,7 +549,7 @@ export default function NavBar({ user, pet }) {
           {isMobile ? (
             <button
               onClick={() => router.push('/feed?vet=true')}
-              style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#E8F8E8', border: 'none', borderRadius: 12, padding: '6px 10px', fontSize: '0.75rem', cursor: 'pointer', color: '#16A34A', fontWeight: 800, fontFamily: 'Nunito, sans-serif' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#E8F8E8', border: 'none', borderRadius: 12, padding: '4px 8px', fontSize: '0.65rem', cursor: 'pointer', color: '#16A34A', fontWeight: 800, fontFamily: 'Nunito, sans-serif', whiteSpace: 'nowrap' }}>
               ⚕️ Vet Posts
             </button>
           ) : (

@@ -587,7 +587,7 @@ export default function Profile() {
                       <div style={{ fontSize: '0.72rem', color: '#6B7280' }}>{timeAgo(p.created_at)}</div>
                     </div>
                   </div>
-                  <p style={{ fontSize: '0.9rem', lineHeight: 1.65 }}>{p.content}</p>
+                  <p style={{ fontSize: '0.9rem', lineHeight: 1.65, whiteSpace: 'pre-wrap' }}>{p.content}</p>
 
                   {/* Show post image if exists */}
                   {p.image_url && (
@@ -631,7 +631,7 @@ export default function Profile() {
                       <div style={{ fontSize: '0.72rem', color: '#6B7280' }}>{timeAgo(r.created_at)}</div>
                     </div>
                   </div>
-                  {r.caption && <p style={{ fontSize: '0.9rem', lineHeight: 1.65, marginBottom: 8 }}>{r.caption}</p>}
+                  {r.caption && <p style={{ fontSize: '0.9rem', lineHeight: 1.65, marginBottom: 8, whiteSpace: 'pre-wrap' }}>{r.caption}</p>}
                   
                   <div style={{ borderRadius: 12, overflow: 'hidden', background: '#111', display: 'flex', justifyContent: 'center' }}>
                     <video src={r.video_url} autoPlay muted loop playsInline controls style={{ width: '100%', maxHeight: 400, objectFit: 'contain' }} />

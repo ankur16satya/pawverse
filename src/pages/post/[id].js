@@ -212,7 +212,7 @@ export default function PostPage() {
 
           {/* Content */}
           {(post.content || post.caption) && (
-            <p style={{ fontSize: '1rem', lineHeight: 1.7, color: '#1E1347', marginBottom: 12 }}>
+            <p style={{ fontSize: '1rem', lineHeight: 1.7, color: '#1E1347', marginBottom: 12, whiteSpace: 'pre-wrap' }}>
               {(post.content || post.caption).split(/(\s+)/).map((word, i) => {
                 if (word.startsWith('#')) return <span key={i} style={{ color: '#6C4BF6', fontWeight: 700 }}>{word}</span>
                 if (/^https?:\/\/[^\s]+$/.test(word)) return <a key={i} href={word} target="_blank" rel="noopener noreferrer" style={{color:'#6C4BF6',fontWeight:700,wordBreak:'break-all',textDecoration:'underline'}}>{word}</a>

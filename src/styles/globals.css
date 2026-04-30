@@ -814,7 +814,7 @@ textarea { max-width: 100%; }
 
 /* Post content */
 .feed-post-content { margin-bottom: 10px; }
-.feed-post-text { line-height: 1.65; font-size: 0.9rem; color: #1E1347; margin: 0 0 6px; word-break: break-word; }
+.feed-post-text { line-height: 1.65; font-size: 0.9rem; color: #1E1347; margin: 0 0 6px; word-break: break-word; white-space: pre-wrap; }
 .feed-hashtag { color: #6C4BF6; font-weight: 700; cursor: pointer; }
 .feed-hashtag:hover { text-decoration: underline; }
 .feed-post-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
@@ -880,7 +880,7 @@ textarea { max-width: 100%; }
 .feed-comment-body { flex: 1; min-width: 0; }
 .feed-comment-bubble { background: #F9F5FF; border-radius: 0 14px 14px 14px; padding: 8px 12px; }
 .feed-comment-name { font-family: 'Baloo 2',cursive; font-weight: 700; font-size: 0.8rem; color: #1E1347; margin-bottom: 2px; }
-.feed-comment-text { font-size: 0.83rem; color: #374151; margin: 0; line-height: 1.5; word-break: break-word; }
+.feed-comment-text { font-size: 0.83rem; color: #374151; margin: 0; line-height: 1.5; word-break: break-word; white-space: pre-wrap; }
 .feed-comment-meta { display: flex; gap: 10px; margin-top: 4px; padding-left: 4px; flex-wrap: wrap; }
 .feed-comment-action { background: none; border: none; cursor: pointer; font-size: 0.72rem; color: #6B7280; font-weight: 700; padding: 0; font-family: 'Nunito',sans-serif; }
 .feed-comment-action:hover { color: #6C4BF6; }

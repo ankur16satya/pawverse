@@ -140,6 +140,7 @@ export default function Feed() {
     Object.entries(feedAudioRefs.current).forEach(([id, aud]) => {
       if (!aud) return
       if (id === activeFeedPostId && !isFeedMuted) {
+        aud.muted = false
         aud.play().catch(() => {
           setIsFeedMuted(true)
           aud.muted = true
@@ -147,11 +148,15 @@ export default function Feed() {
         })
       } else {
         aud.pause()
+        aud.muted = true
       }
     })
     Object.entries(feedVideoRefs.current).forEach(([id, vid]) => {
       if (!vid) return
+      const post = posts.find(p => String(p.id) === id)
+      const hasAudio = post?.audio_url
       if (id === activeFeedPostId) {
+        vid.muted = hasAudio ? true : isFeedMuted
         vid.play().catch(() => {
           setIsFeedMuted(true)
           vid.muted = true
@@ -159,6 +164,7 @@ export default function Feed() {
         })
       } else {
         vid.pause()
+        vid.muted = true
       }
     })
   }, [activeFeedPostId, posts, isFeedMuted])
@@ -248,12 +254,28 @@ export default function Feed() {
         : Promise.resolve()
     ])
 
-    supabase.from('posts').select('hashtags').not('hashtags', 'is', null).limit(1000).order('created_at', { ascending: false }).then(({data}) => {
-      if (data && data.length > 0) {
-        const counts = {}
-        data.forEach(p => { if (p.hashtags) p.hashtags.forEach(h => { counts[h] = (counts[h] || 0) + 1 }) })
-        const trending = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,10).map(x=>x[0])
-        if (trending.length > 0) setTrendingTags(trending)
+    Promise.all([
+      supabase.from('posts').select('content').not('content', 'is', null).limit(1000).order('created_at', { ascending: false }),
+      supabase.from('reels').select('caption').not('caption', 'is', null).limit(1000).order('created_at', { ascending: false })
+    ]).then(([postsRes, reelsRes]) => {
+      const counts = {}
+      const extractTags = (text) => {
+        if (!text) return
+        const tags = text.match(/#[\w]+/g)
+        if (tags) {
+          tags.forEach(t => {
+            const h = t.toLowerCase()
+            counts[h] = (counts[h] || 0) + 1
+          })
+        }
+      }
+      
+      if (postsRes.data) postsRes.data.forEach(p => extractTags(p.content))
+      if (reelsRes.data) reelsRes.data.forEach(r => extractTags(r.caption))
+      
+      const trending = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,10).map(x=>x[0])
+      if (trending.length > 0) {
+        setTrendingTags(trending)
       }
     })
 
@@ -659,8 +681,17 @@ export default function Feed() {
 
   const handleEditPost = async (post) => {
     if (!editText.trim()) return
-    await supabase.from('posts').update({content:editText,edited:true}).eq('id',post.id)
-    setPosts(prev=>prev.map(p=>p.id===post.id?{...p,content:editText,edited:true}:p))
+    const table = post.type === 'reel' ? 'reels' : 'posts'
+    const payload = post.type === 'reel' ? {caption:editText} : {content:editText,edited:true}
+    
+    const { error } = await supabase.from(table).update(payload).eq('id',post.id)
+    if (error) {
+      console.error("Edit error:", error);
+      alert("Failed to edit: " + error.message);
+      return;
+    }
+    
+    setPosts(prev=>prev.map(p=>p.id===post.id?{...p, ...payload}:p))
     setEditingPost(null); setEditText(''); setOpenMenu(null)
   }
 
@@ -1023,7 +1054,7 @@ export default function Feed() {
                       <div className="feed-menu-dropdown">
                         {isMyPost?(
                           <>
-                            <div className="feed-menu-item" onClick={()=>{setEditingPost(post.id);setEditText(post.content);setOpenMenu(null)}}>✏️ Edit</div>
+                            <div className="feed-menu-item" onClick={()=>{setEditingPost(post.id);setEditText(post.content||post.caption||'');setOpenMenu(null)}}>✏️ Edit</div>
                             <div className="feed-menu-item danger" onClick={()=>handleDeletePost(post)}>🗑️ Delete</div>
                             <div className="feed-menu-item" onClick={()=>handleShare(post)}>🔗 Share</div>
                           </>

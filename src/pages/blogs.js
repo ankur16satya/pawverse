@@ -84,8 +84,9 @@ export default function Blogs() {
                 onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-8px)'; e.currentTarget.style.boxShadow = '0 12px 36px rgba(108,75,246,0.15)' }}
                 onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(108,75,246,0.08)' }}>
                 
-                <div style={{ height: 200, position: 'relative' }}>
-                  <img src={blog.image_url || 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&q=80&w=800'} alt={blog.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <div style={{ height: 200, position: 'relative', background: '#1E1347', overflow: 'hidden' }}>
+                  <img src={blog.image_url || 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&q=80&w=800'} alt={blog.title} style={{ width: '100%', height: '100%', objectFit: 'contain', position: 'relative', zIndex: 1 }} />
+                  <div style={{ position: 'absolute', inset: '-10px', background: `url(${blog.image_url || 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&q=80&w=800'}) center/cover`, filter: 'blur(15px)', opacity: 0.4 }} />
                   <div style={{ position: 'absolute', top: 15, left: 15, background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(4px)', padding: '5px 12px', borderRadius: 20, fontSize: '0.65rem', fontWeight: 900, color: '#6C4BF6', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     {blog.category}
                   </div>

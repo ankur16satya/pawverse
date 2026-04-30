@@ -1,9 +1,30 @@
 // File: src/pages/superadmin.js
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
 import { uploadToCloudinary } from '../lib/cloudinary'
+import dynamic from 'next/dynamic'
+import 'react-quill/dist/quill.snow.css'
+import 'quill-image-uploader/dist/quill.imageUploader.min.css'
+
+const QuillWrapper = dynamic(async () => {
+  const { default: RQ } = await import('react-quill');
+  
+  try {
+    const { default: ImageUploader } = await import('quill-image-uploader');
+    // ReactQuill exposes the Quill core class via RQ.Quill
+    if (RQ.Quill) {
+      RQ.Quill.register('modules/imageUploader', ImageUploader);
+    }
+  } catch (e) {
+    console.error("Failed to load quill-image-uploader", e);
+  }
+  
+  return function Editor(props) {
+    return <RQ {...props} />;
+  }
+}, { ssr: false, loading: () => <div style={{padding: 20, textAlign: 'center', color: '#6C4BF6', fontWeight: 800}}>Loading Editor...</div> });
 
 // ⚠️ List all authorized super admin emails here:
 const SUPER_ADMINS = ['ankur16satya@gmail.com', 'sharmasiddharth269@gmail.com']
@@ -25,10 +46,33 @@ export default function SuperAdmin() {
   const [blogs, setBlogs] = useState([])
   const [showBlogForm, setShowBlogForm] = useState(false)
   const [blogSaving, setBlogSaving] = useState(false)
+  const [blogImageUploading, setBlogImageUploading] = useState(false)
   const [editingBlog, setEditingBlog] = useState(null)
   const [blogForm, setBlogForm] = useState({
     title: '', slug: '', excerpt: '', content: '', image_url: '', category: 'General'
   })
+
+  const modules = useMemo(() => ({
+    toolbar: [
+      [{ 'header': [1, 2, 3, false] }],
+      ['bold', 'italic', 'underline', 'strike', 'blockquote'],
+      [{'list': 'ordered'}, {'list': 'bullet'}],
+      ['link', 'image'],
+      ['clean']
+    ],
+    imageUploader: {
+      upload: (file) => {
+        return new Promise((resolve, reject) => {
+          uploadToCloudinary(file, 'blogs')
+            .then(url => resolve(url))
+            .catch(err => {
+              console.error("Upload failed", err);
+              reject("Upload failed");
+            });
+        });
+      }
+    }
+  }), [])
 
   useEffect(() => { init() }, [])
 
@@ -448,11 +492,18 @@ export default function SuperAdmin() {
                   <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                     <input type="file" accept="image/*" onChange={async (e) => {
                       if (e.target.files?.[0]) {
-                        const url = await uploadToCloudinary(e.target.files[0], 'blogs')
-                        setBlogForm({...blogForm, image_url: url})
+                        setBlogImageUploading(true)
+                        try {
+                          const url = await uploadToCloudinary(e.target.files[0], 'blogs')
+                          setBlogForm({...blogForm, image_url: url})
+                        } catch (err) {
+                          alert('Image upload failed: ' + err.message)
+                        } finally {
+                          setBlogImageUploading(false)
+                        }
                       }
                     }} style={{ fontSize: '0.8rem' }} />
-                    {blogForm.image_url && <img src={blogForm.image_url} style={{ width: 60, height: 40, objectFit: 'cover', borderRadius: 4, border: '1.5px solid #EDE8FF' }} />}
+                    {blogImageUploading ? <span style={{ fontSize: '0.85rem', color: '#6C4BF6', fontWeight: 800 }}>Uploading...</span> : (blogForm.image_url && <img src={blogForm.image_url} style={{ width: 60, height: 40, objectFit: 'cover', borderRadius: 4, border: '1.5px solid #EDE8FF' }} />)}
                   </div>
                 </div>
 
@@ -461,15 +512,20 @@ export default function SuperAdmin() {
                   <textarea className="input" rows="2" required value={blogForm.excerpt} onChange={e => setBlogForm({...blogForm, excerpt: e.target.value})} placeholder="Brief summary for social media and search engines..." />
                 </div>
 
-                <div>
-                  <label style={{ fontSize: '0.85rem', fontWeight: 800, color: '#374151', display: 'block', marginBottom: 6 }}>Article Content (HTML/Rich Text supported)</label>
-                  <textarea className="input" rows="12" required value={blogForm.content} onChange={e => setBlogForm({...blogForm, content: e.target.value})} placeholder="Write your masterpiece here... Use <h3> tags for headings, <p> for paragraphs." 
-                    style={{ fontFamily: 'Georgia, serif', lineHeight: 1.6, fontSize: '1rem', padding: 15 }} />
+                <div style={{ paddingBottom: '40px' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 800, color: '#374151', display: 'block', marginBottom: 6 }}>Article Content</label>
+                  <QuillWrapper 
+                    theme="snow" 
+                    modules={modules}
+                    value={blogForm.content} 
+                    onChange={content => setBlogForm({...blogForm, content})} 
+                    style={{ height: '350px', background: '#fff' }}
+                  />
                 </div>
 
                 <div style={{ display: 'flex', gap: 12, marginTop: 10 }}>
                   <button type="button" onClick={() => setShowBlogForm(false)} style={{ flex: 1, padding: 14, borderRadius: 14, border: '2px solid #EDE8FF', background: 'transparent', fontWeight: 800 }}>Cancel</button>
-                  <button disabled={blogSaving} className="btn-primary" style={{ flex: 2, padding: 14, borderRadius: 14, fontSize: '1rem' }}>
+                  <button disabled={blogSaving || blogImageUploading} className="btn-primary" style={{ flex: 2, padding: 14, borderRadius: 14, fontSize: '1rem', opacity: (blogSaving || blogImageUploading) ? 0.6 : 1 }}>
                     {blogSaving ? '⏳ Saving...' : '🚀 Publish Article'}
                   </button>
                 </div>

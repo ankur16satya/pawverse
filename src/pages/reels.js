@@ -5,6 +5,38 @@ import NavBar from '../components/NavBar'
 import SEO from '../components/SEO'
 import { uploadToCloudinary } from '../lib/cloudinary'
 
+const ReelCaption = ({ text }) => {
+  const [expanded, setExpanded] = useState(false)
+  if (!text) return null
+  
+  const words = text.split(/(\s+)/).map((word, i) =>
+    word.startsWith('#') ? <span key={i} style={{ color: '#A78BFA', fontWeight: 700 }}>{word}</span> : word
+  )
+  
+  return (
+    <div style={{ pointerEvents: 'auto', paddingRight: 8 }}>
+      <p style={{ 
+        fontSize: '0.88rem', lineHeight: 1.4, margin: 0, 
+        textShadow: '0 1px 4px rgba(0,0,0,0.8)', maxWidth: '100%', 
+        whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+        display: expanded ? 'block' : '-webkit-box',
+        WebkitLineClamp: expanded ? 'unset' : 2,
+        WebkitBoxOrient: 'vertical',
+        overflow: 'hidden',
+        maxHeight: expanded ? '40vh' : 'auto',
+        overflowY: expanded ? 'auto' : 'hidden'
+      }}>
+        {words}
+      </p>
+      {text.length > 60 && (
+        <span onClick={() => setExpanded(!expanded)} style={{ fontSize: '0.8rem', fontWeight: 700, color: '#fff', cursor: 'pointer', opacity: 0.9, display: 'inline-block', marginTop: 2, textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
+          {expanded ? 'Show less' : '...more'}
+        </span>
+      )}
+    </div>
+  )
+}
+
 export default function Reels() {
   const router = useRouter()
   const [user, setUser] = useState(null)
@@ -417,6 +449,8 @@ export default function Reels() {
         html, body { overflow: hidden !important; height: 100% !important; }
         .reels-scroll::-webkit-scrollbar { display: none; }
         .reels-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+        .reels-caption-scroll::-webkit-scrollbar { width: 4px; }
+        .reels-caption-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 4px; }
       `}</style>
 
       {/* NavBar sits on top */}
@@ -553,13 +587,7 @@ export default function Reels() {
                         <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.8)' }}>by {reel.pets?.owner_name}</div>
                       </div>
                     </div>
-                    {reel.caption && (
-                      <p style={{ fontSize: '0.88rem', lineHeight: 1.5, margin: 0, textShadow: '0 1px 4px rgba(0,0,0,0.6)', maxWidth: '90%' }}>
-                        {reel.caption.split(/(\s+)/).map((word, i) =>
-                          word.startsWith('#') ? <span key={i} style={{ color: '#A78BFA', fontWeight: 700 }}>{word}</span> : word
-                        )}
-                      </p>
-                    )}
+                    {reel.caption && <ReelCaption text={reel.caption} />}
                   </div>
 
                   {/* Action buttons — right side */}

@@ -338,7 +338,7 @@ setFriends(friendList)
                       <div style={{ fontSize: '0.72rem', color: '#6B7280' }}>{timeAgo(p.created_at)}</div>
                     </div>
                   </div>
-                  {p.content && <p style={{ fontSize: '0.9rem', lineHeight: 1.65, marginBottom: 8 }}>{p.content}</p>}
+                  {p.content && <p style={{ fontSize: '0.9rem', lineHeight: 1.65, marginBottom: 8, whiteSpace: 'pre-wrap' }}>{p.content}</p>}
                  {p.image_url && (
   <div onClick={() => setLightboxImg(p.image_url)}
     style={{ borderRadius: 12, overflow: 'hidden', cursor: 'zoom-in', background: '#F3F0FF', maxHeight: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -375,7 +375,7 @@ setFriends(friendList)
                       <div style={{ fontSize: '0.72rem', color: '#6B7280' }}>{timeAgo(r.created_at)}</div>
                     </div>
                   </div>
-                  {r.caption && <p style={{ fontSize: '0.9rem', lineHeight: 1.65, marginBottom: 8 }}>{r.caption}</p>}
+                  {r.caption && <p style={{ fontSize: '0.9rem', lineHeight: 1.65, marginBottom: 8, whiteSpace: 'pre-wrap' }}>{r.caption}</p>}
                   
                   <div style={{ borderRadius: 12, overflow: 'hidden', background: '#111', display: 'flex', justifyContent: 'center' }}>
                     <video src={r.video_url} autoPlay muted loop playsInline controls style={{ width: '100%', maxHeight: 400, objectFit: 'contain' }} />
