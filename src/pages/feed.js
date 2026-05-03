@@ -199,36 +199,18 @@ export default function Feed() {
     ])
 
     const allPets = allPetsRes.data
-    let petData = (allPets || []).find(p => !p.is_health_pet)
-    const hiddenVet = (allPets || []).find(p => p.is_health_pet && (p.role === 'vet' || p.role === 'supplier'))
-
-    if (hiddenVet && !petData) {
-      await supabase.from('pets').update({ is_health_pet: false }).eq('id', hiddenVet.id)
-      petData = { ...hiddenVet, is_health_pet: false }
-    } else if (hiddenVet && petData) {
-      if (petData.role === 'user' && hiddenVet.role !== 'user') {
+    // Prefer a non-health social pet; if user is a vet/supplier, their pet may have is_health_pet=false already
+    let petData = (allPets || []).find(p => !p.is_health_pet) || null
+    // Only flip is_health_pet if user has NO social pet at all — never flip if they already have one
+    if (!petData) {
+      const hiddenVet = (allPets || []).find(p => p.is_health_pet && (p.role === 'vet' || p.role === 'supplier'))
+      if (hiddenVet) {
         await supabase.from('pets').update({ is_health_pet: false }).eq('id', hiddenVet.id)
         petData = { ...hiddenVet, is_health_pet: false }
       }
     }
 
     if (petData) {
-      // PROACTIVE SELF-HEALING:
-      // If the name clearly implies a Vet/Supplier but role is stuck as 'user', fix it!
-      const name = (petData.pet_name || '').toLowerCase()
-      const currentRole = (petData.role || 'user').toLowerCase()
-      
-      if (currentRole === 'user') {
-        let newRole = null
-        if (name.includes('vet') || name.includes('hospital') || name.includes('clinic') || name.includes('doctor')) newRole = 'vet'
-        else if (name.includes('shop') || name.includes('store') || name.includes('supply') || name.includes('pet store')) newRole = 'supplier'
-        
-        if (newRole) {
-          console.log(`Auto-upgrading ${petData.pet_name} to ${newRole}...`)
-          await supabase.from('pets').update({ role: newRole, is_health_pet: false }).eq('id', petData.id)
-          petData.role = newRole
-        }
-      }
       setPet(petData)
     }
     setSuggestions(othersResult.data || [])
@@ -699,7 +681,7 @@ export default function Feed() {
     if (!confirm('Delete this post?')) return
     if (post.pets?.user_id!==user.id) { alert('You can only delete your own posts!'); return }
     const table = post.type === 'reel' ? 'reels' : 'posts'
-    const { error } = await supabase.from(table).delete().eq('id',post.id).eq('pet_id',pet.id)
+    const { error } = await supabase.from(table).delete().eq('id',post.id).eq('pet_id',post.pet_id)
     if (error) { alert('Could not delete post.'); return }
     
     // Delete media from Cloudinary to save space

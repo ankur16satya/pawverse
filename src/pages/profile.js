@@ -95,8 +95,9 @@ export default function Profile() {
 
       let primaryPet = sortedPets[0]
 
-      // If we found a hidden professional profile but our current primary is just a 'user', fix the professional one!
-      if (primaryPet && primaryPet.is_health_pet && (primaryPet.role === 'vet' || primaryPet.role === 'supplier')) {
+      // Only un-hide a health_pet if there's no other social pet available
+      const hasSocialPet = sortedPets.some(p => !p.is_health_pet)
+      if (primaryPet && primaryPet.is_health_pet && !hasSocialPet && (primaryPet.role === 'vet' || primaryPet.role === 'supplier')) {
         await supabase.from('pets').update({ is_health_pet: false }).eq('id', primaryPet.id)
         primaryPet.is_health_pet = false
       }
