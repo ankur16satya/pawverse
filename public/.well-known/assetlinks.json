@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.pawversesocial.twa",
+        "sha256_cert_fingerprints": ["92:2A:1C:06:92:2A:6F:9D:92:39:5B:B4:FB:7D:72:0C:4A:03:10:FC:CF:97:12:DD:D6:8B:12:F0:CA:A2:E4:2B"]
+      }
+    }]
