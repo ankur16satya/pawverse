@@ -81,6 +81,32 @@ export default async function handler(req, res) {
       });
     }
 
+    // 🩺 Vet auto-activated (self-serve: email confirmed + license uploaded) — send welcome email
+    else if (trigger === 'VET_APPROVED') {
+      const { vetName, vetEmail } = req.body;
+      if (vetEmail) {
+        await transporter.sendMail({
+          from: '"Pawverse" <ankur16satya@gmail.com>',
+          to: vetEmail,
+          subject: '🎉 Your PawVerse Vet Account is Active!',
+          text:
+`Great news, Dr. ${vetName}!
+
+Your PawVerse vet account is now fully activated. You have full access to:
+
+✓ Your vet dashboard (/doctor/admin)
+✓ Creating your clinic listing with appointment slots
+✓ Accepting consultations from pet parents
+✓ Setting your own consultation fees
+
+Visit https://pawversesocial.com/doctor/admin to set up your profile.
+
+Welcome aboard!
+— Team PawVerse 🐾`
+        });
+      }
+    }
+
     res.status(200).json({ success: true });
   } catch (error) {
     console.error(error);

@@ -89,7 +89,7 @@ export default function Chat() {
 
   const init = async () => {
     const { data: { session } } = await supabase.auth.getSession()
-    if (!session) { router.push('/'); return }
+    if (!session) { router.push('/login?next=' + encodeURIComponent(router.asPath)); return }
     setUser(session.user)
     userRef.current = session.user
 

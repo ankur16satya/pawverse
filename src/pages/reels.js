@@ -163,7 +163,7 @@ export default function Reels() {
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
       if (sessionError) console.error("Session error:", sessionError)
-      if (!session) { router.push('/'); return }
+      if (!session) { router.push('/login?next=' + encodeURIComponent(router.asPath)); return }
       setUser(session.user)
       
       const saved = localStorage.getItem(`pawverse_likes_${session.user.id}`)

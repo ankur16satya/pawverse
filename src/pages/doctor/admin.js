@@ -35,15 +35,56 @@ export default function DoctorDashboard() {
 
   const [appointments, setAppointments] = useState([])
 
+  const [vetVerified, setVetVerified] = useState(null) // null = checking, true/false otherwise
+  const [licenseUploading, setLicenseUploading] = useState(false)
+  const [licenseError, setLicenseError] = useState('')
+
   useEffect(() => { init() }, [])
 
   const init = async () => {
     const { data: { session } } = await supabase.auth.getSession()
-    if (!session) { router.push('/'); return }
+    if (!session) { router.push('/login?next=' + encodeURIComponent(router.asPath)); return }
     setUser(session.user)
 
     const { data: petData } = await supabase.from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).single()
     setPet(petData)
+
+    // 🩺 Automatic vet verification gate:
+    //   1) Email must be confirmed (Supabase handles this — session.user.email_confirmed_at)
+    //   2) Vet must have uploaded their license document (vet_license_url is set)
+    // For backwards compatibility: legacy vets (vet_verified=null) are allowed in.
+    // New vet signups have vet_verified=false until BOTH conditions are met.
+    if (petData?.role === 'vet' && petData?.vet_verified === false) {
+      const emailConfirmed = !!session.user.email_confirmed_at
+      const licenseUploaded = !!petData?.vet_license_url
+
+      if (emailConfirmed && licenseUploaded) {
+        // Auto-promote to verified — no admin needed
+        await supabase.from('pets').update({ vet_verified: true }).eq('id', petData.id)
+
+        // Fire-and-forget welcome email
+        try {
+          fetch('/api/email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              trigger: 'VET_APPROVED',
+              vetName: petData.owner_name,
+              vetEmail: session.user.email,
+            })
+          })
+        } catch (e) { /* non-blocking */ }
+
+        setPet({ ...petData, vet_verified: true })
+        setVetVerified(true)
+      } else {
+        setVetVerified(false)
+        setLoading(false)
+        return
+      }
+    } else {
+      setVetVerified(true)
+    }
 
     const { data: listingData } = await supabase.from('listings').select('*').eq('user_id', session.user.id).eq('is_service', true).eq('brand', 'Doctor').single()
 
@@ -169,6 +210,154 @@ export default function DoctorDashboard() {
 
 
   if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontSize: '2rem' }}>🐾</div>
+
+  // 🩺 Vet not yet verified — show self-serve verification screen
+  if (vetVerified === false) {
+    const emailConfirmed = !!user?.email_confirmed_at
+    const licenseUploaded = !!pet?.vet_license_url
+
+    const handleLicenseUpload = async (e) => {
+      const file = e.target.files?.[0]
+      if (!file) return
+      setLicenseError('')
+      if (file.size > 5 * 1024 * 1024) {
+        setLicenseError('File must be under 5MB.')
+        return
+      }
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf']
+      if (!allowedTypes.includes(file.type)) {
+        setLicenseError('Only JPG, PNG, or PDF files are accepted.')
+        return
+      }
+      setLicenseUploading(true)
+      try {
+        const url = await uploadToCloudinary(file, 'vet-licenses')
+        // Save to pet record
+        const { error: updateErr } = await supabase
+          .from('pets')
+          .update({ vet_license_url: url })
+          .eq('id', pet.id)
+        if (updateErr) throw updateErr
+
+        // If email is already confirmed, auto-promote to verified
+        if (emailConfirmed) {
+          await supabase.from('pets').update({ vet_verified: true }).eq('id', pet.id)
+          window.location.reload() // refresh to enter the dashboard
+        } else {
+          // License saved, but still need email confirmation — refresh to show updated state
+          setPet({ ...pet, vet_license_url: url })
+        }
+      } catch (err) {
+        setLicenseError('Upload failed: ' + (err.message || 'Please try again.'))
+      } finally {
+        setLicenseUploading(false)
+      }
+    }
+
+    const handleResendConfirmation = async () => {
+      try {
+        const { error } = await supabase.auth.resend({ type: 'signup', email: user?.email })
+        if (error) throw error
+        alert('📧 Confirmation email resent! Check your inbox.')
+      } catch (err) {
+        alert('Could not resend: ' + err.message)
+      }
+    }
+
+    return (
+      <div style={{ background: '#FFFBF7', minHeight: '100vh' }}>
+        <NavBar user={user} pet={pet} />
+        <div style={{ maxWidth: 640, margin: '80px auto 40px', padding: 20 }}>
+          <div style={{ background: '#fff', borderRadius: 20, padding: 36, boxShadow: '0 4px 20px rgba(0,0,0,0.06)' }}>
+            <div style={{ textAlign: 'center', marginBottom: 24 }}>
+              <div style={{ fontSize: '3.5rem', marginBottom: 10 }}>🩺</div>
+              <h1 style={{ fontFamily: "'Baloo 2', cursive", color: '#1E1347', fontSize: '1.7rem', marginBottom: 8 }}>Activate Your Vet Account</h1>
+              <p style={{ color: '#6B7280', fontSize: '0.92rem', lineHeight: 1.55 }}>
+                Complete these two quick steps to start accepting consultations on PawVerse. Both are required to ensure pet parents get advice from real veterinary professionals.
+              </p>
+            </div>
+
+            {/* Step 1: Email confirmation */}
+            <div style={{ background: emailConfirmed ? '#F0FDF4' : '#FFF8E1', border: `1px solid ${emailConfirmed ? '#22C55E' : '#FFC107'}`, padding: 18, borderRadius: 14, marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                <div style={{ width: 32, height: 32, borderRadius: '50%', background: emailConfirmed ? '#22C55E' : '#FFC107', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
+                  {emailConfirmed ? '✓' : '1'}
+                </div>
+                <div style={{ fontWeight: 800, color: '#1E1347', fontSize: '1rem' }}>
+                  {emailConfirmed ? 'Email Verified ✓' : 'Verify Your Email'}
+                </div>
+              </div>
+              {!emailConfirmed ? (
+                <>
+                  <p style={{ fontSize: '0.88rem', color: '#78350F', marginBottom: 10, lineHeight: 1.5 }}>
+                    Check <strong>{user?.email}</strong> for a confirmation link from Supabase. Click it, then refresh this page.
+                  </p>
+                  <button onClick={handleResendConfirmation} style={{ background: '#FF6B35', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontFamily: 'Nunito, sans-serif', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>
+                    📨 Resend Confirmation Email
+                  </button>
+                </>
+              ) : (
+                <p style={{ fontSize: '0.88rem', color: '#166534', margin: 0 }}>Your email <strong>{user?.email}</strong> has been verified.</p>
+              )}
+            </div>
+
+            {/* Step 2: License upload */}
+            <div style={{ background: licenseUploaded ? '#F0FDF4' : '#F0EBFF', border: `1px solid ${licenseUploaded ? '#22C55E' : '#6C4BF6'}`, padding: 18, borderRadius: 14, marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                <div style={{ width: 32, height: 32, borderRadius: '50%', background: licenseUploaded ? '#22C55E' : '#6C4BF6', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
+                  {licenseUploaded ? '✓' : '2'}
+                </div>
+                <div style={{ fontWeight: 800, color: '#1E1347', fontSize: '1rem' }}>
+                  {licenseUploaded ? 'License Document Uploaded ✓' : 'Upload Vet License / Registration'}
+                </div>
+              </div>
+              {!licenseUploaded ? (
+                <>
+                  <p style={{ fontSize: '0.88rem', color: '#4B5563', marginBottom: 12, lineHeight: 1.5 }}>
+                    Upload a clear photo or PDF of your <strong>veterinary council registration</strong>, <strong>BVSc degree certificate</strong>, or equivalent license. Accepted: JPG, PNG, PDF (max 5MB).
+                  </p>
+                  <p style={{ fontSize: '0.78rem', color: '#92400E', background: '#FFF8E1', padding: '8px 12px', borderRadius: 8, marginBottom: 12 }}>
+                    ⚠️ Uploading false credentials is fraud and may be reported to the relevant veterinary council.
+                  </p>
+                  <label style={{ display: 'inline-block', cursor: 'pointer' }}>
+                    <input type="file" accept="image/jpeg,image/png,image/jpg,application/pdf" onChange={handleLicenseUpload} disabled={licenseUploading} style={{ display: 'none' }} />
+                    <span style={{ display: 'inline-block', background: licenseUploading ? '#A8A4C7' : 'linear-gradient(135deg, #FF6B35, #6C4BF6)', color: '#fff', borderRadius: 50, padding: '10px 22px', fontFamily: 'Nunito, sans-serif', fontWeight: 800, fontSize: '0.9rem' }}>
+                      {licenseUploading ? '⏳ Uploading...' : '📎 Choose File'}
+                    </span>
+                  </label>
+                  {licenseError && <div style={{ color: '#FF4757', fontSize: '0.82rem', marginTop: 10 }}>{licenseError}</div>}
+                </>
+              ) : (
+                <div>
+                  <p style={{ fontSize: '0.88rem', color: '#166534', marginBottom: 8 }}>License document received. <a href={pet.vet_license_url} target="_blank" rel="noopener noreferrer" style={{ color: '#6C4BF6', fontWeight: 700 }}>View uploaded file →</a></p>
+                  <label style={{ display: 'inline-block', cursor: 'pointer' }}>
+                    <input type="file" accept="image/jpeg,image/png,image/jpg,application/pdf" onChange={handleLicenseUpload} disabled={licenseUploading} style={{ display: 'none' }} />
+                    <span style={{ fontSize: '0.82rem', color: '#6C4BF6', fontWeight: 700, textDecoration: 'underline' }}>Upload a different file</span>
+                  </label>
+                </div>
+              )}
+            </div>
+
+            {emailConfirmed && licenseUploaded && (
+              <div style={{ background: 'linear-gradient(135deg, #FF6B35, #6C4BF6)', borderRadius: 14, padding: 20, textAlign: 'center', color: '#fff', marginTop: 8 }}>
+                <div style={{ fontSize: '2rem', marginBottom: 6 }}>🎉</div>
+                <div style={{ fontWeight: 800, fontSize: '1.05rem', marginBottom: 8 }}>You're all set!</div>
+                <button onClick={() => window.location.reload()} style={{ background: '#fff', color: '#FF6B35', padding: '10px 24px', borderRadius: 50, fontFamily: 'Nunito, sans-serif', fontWeight: 800, fontSize: '0.9rem', cursor: 'pointer', border: 'none' }}>
+                  Enter Vet Dashboard →
+                </button>
+              </div>
+            )}
+
+            <p style={{ color: '#6B7280', fontSize: '0.82rem', textAlign: 'center', marginTop: 20 }}>
+              Questions? Email <a href="mailto:support@pawversesocial.com" style={{ color: '#FF6B35', fontWeight: 700 }}>support@pawversesocial.com</a>
+              <br />
+              <button onClick={() => router.push('/')} style={{ marginTop: 10, background: 'transparent', border: 'none', color: '#6C4BF6', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', fontSize: '0.82rem' }}>← Back to Home</button>
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div style={{ background: '#FFFBF7', minHeight: '100vh' }}>

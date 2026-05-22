@@ -28,7 +28,7 @@ export default function Adopt() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) { router.push('/'); return }
+      if (!session) { router.push('/login?next=' + encodeURIComponent(router.asPath)); return }
       setUser(session.user)
       supabase.from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).single().then(({ data }) => setPet(data))
       fetchListings()

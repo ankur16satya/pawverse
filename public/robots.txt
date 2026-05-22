@@ -17,6 +17,7 @@ Disallow: /coins
 Disallow: /cart
 Disallow: /profile/edit
 Disallow: /doctor/admin
+Disallow: /login
 
 # Sitemap location
 Sitemap: https://pawversesocial.com/sitemap.xml

@@ -69,7 +69,7 @@ export default function Marketplace() {
 
   const init = async () => {
     const { data: { session } } = await supabase.auth.getSession()
-    if (!session) { router.push('/'); return }
+    if (!session) { router.push('/login?next=' + encodeURIComponent(router.asPath)); return }
     setUser(session.user)
 
     // Fetch all pets and prioritize the professional one

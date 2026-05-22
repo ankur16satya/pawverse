@@ -78,7 +78,7 @@ export default function SuperAdmin() {
 
   const init = async () => {
     const { data: { session } } = await supabase.auth.getSession()
-    if (!session) { router.push('/'); return }
+    if (!session) { router.push('/login'); return }
     
     // STRICT SECURITY CHECK
     if (!SUPER_ADMINS.includes(session.user.email)) {

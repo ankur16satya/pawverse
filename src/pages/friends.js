@@ -20,7 +20,7 @@ export default function Friends() {
 
   const init = async () => {
     const { data: { session } } = await supabase.auth.getSession()
-    if (!session) { router.push('/'); return }
+    if (!session) { router.push('/login?next=' + encodeURIComponent(router.asPath)); return }
     setUser(session.user)
 
     const { data: petData } = await supabase

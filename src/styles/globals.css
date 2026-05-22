@@ -1106,3 +1106,8 @@ textarea { max-width: 100%; }
 .role-tag.vet { background: #F3F0FF; color: #6C4BF6; }
 .role-tag.supplier { background: #E8F8E8; color: #22C55E; }
 
+
+/* === Public Homepage — hide secondary nav links on mobile to keep header clean === */
+@media (max-width: 640px) {
+  .nav-hide-mobile { display: none !important; }
+}

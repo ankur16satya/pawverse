@@ -844,7 +844,7 @@ export default function Health() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) { router.push('/'); return }
+      if (!session) { router.push('/login?next=' + encodeURIComponent(router.asPath)); return }
       setUser(session.user)
       loadPets(session.user.id)
     })

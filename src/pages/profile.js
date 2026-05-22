@@ -31,7 +31,7 @@ export default function Profile() {
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session }, error: sessionError }) => {
-      if (!session) { router.push('/'); return }
+      if (!session) { router.push('/login?next=' + encodeURIComponent(router.asPath)); return }
 
       // Check if this user still exists in auth (handles deleted accounts)
       const { error: userError } = await supabase.auth.getUser()

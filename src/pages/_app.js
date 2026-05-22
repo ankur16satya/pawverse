@@ -25,7 +25,7 @@ export default function App({ Component, pageProps }) {
       
       <Head>
         {/* Viewport & PWA settings */}
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="manifest" href="/manifest.json" />
 
         {/* Organization + WebSite JSON-LD Schema (Issue 2.6) */}
