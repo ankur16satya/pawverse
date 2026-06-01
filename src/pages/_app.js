@@ -98,9 +98,8 @@ export default function App({ Component, pageProps }) {
                     "latitude": 30.3165,
                     "longitude": 78.0322
                   },
-                  "telephone": "+91-XXXXXXXXXX",
                   "email": "support@pawversesocial.com",
-                  "priceRange": "Free",
+                  "priceRange": "₹₹",
                   "openingHours": "Mo-Su 00:00-24:00",
                   "sameAs": ["https://pawversesocial.com/#org"]
                 }

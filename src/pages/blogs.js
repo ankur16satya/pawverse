@@ -4,15 +4,17 @@ import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
 import SEO from '../components/SEO'
 
-export default function Blogs() {
+export default function Blogs({ blogs: initialBlogs }) {
   const router = useRouter()
-  const [blogs, setBlogs] = useState([])
-  const [loading, setLoading] = useState(true)
+  // SSR provides the blogs so Googlebot sees the full list in the initial HTML.
+  const [blogs, setBlogs] = useState(initialBlogs || [])
+  const [loading, setLoading] = useState(!initialBlogs)
   const [filter, setFilter] = useState('All')
   const categories = ['All', 'Health', 'Training', 'Food', 'Fun', 'General']
 
   useEffect(() => {
-    fetchBlogs()
+    // Only refetch on the client if SSR didn't already supply the blogs.
+    if (!initialBlogs) fetchBlogs()
   }, [])
 
   const fetchBlogs = async () => {
@@ -85,9 +87,8 @@ export default function Blogs() {
                 onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-8px)'; e.currentTarget.style.boxShadow = '0 12px 36px rgba(108,75,246,0.15)' }}
                 onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(108,75,246,0.08)' }}>
                 
-                <div style={{ height: 200, position: 'relative', background: '#1E1347', overflow: 'hidden' }}>
-                  <img src={blog.image_url || 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&q=80&w=800'} alt={blog.title} style={{ width: '100%', height: '100%', objectFit: 'contain', position: 'relative', zIndex: 1 }} />
-                  <div style={{ position: 'absolute', inset: '-10px', background: `url(${blog.image_url || 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&q=80&w=800'}) center/cover`, filter: 'blur(15px)', opacity: 0.4 }} />
+                <div style={{ height: 200, position: 'relative', background: '#F3F0FF', overflow: 'hidden' }}>
+                  <img src={blog.image_url || 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&q=80&w=800'} alt={blog.title} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                   <div style={{ position: 'absolute', top: 15, left: 15, background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(4px)', padding: '5px 12px', borderRadius: 20, fontSize: '0.65rem', fontWeight: 900, color: '#6C4BF6', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     {blog.category}
                   </div>
@@ -104,7 +105,7 @@ export default function Blogs() {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #F3F0FF', paddingTop: 15 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                        <img src={blog.author_avatar || '/logo.png'} style={{ width: 28, height: 28, borderRadius: '50%' }} />
-                       <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#374151' }}>{blog.author_name || 'Admin'}</span>
+                       <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#374151' }}>{(blog.author_name && !['', 'admin', 'pawverse team', 'pawverse'].includes(blog.author_name.trim().toLowerCase())) ? blog.author_name : 'PawVerse Social Veterinary Team'}</span>
                     </div>
                     <span style={{ color: '#6C4BF6', fontSize: '0.85rem', fontWeight: 800 }}>Read More →</span>
                   </div>
@@ -125,7 +126,16 @@ export default function Blogs() {
 }
 
 
-// Issue 2.2: SSR for blog index so Google can index it
+// SSR for blog index so Google sees the full list of posts in the initial HTML.
 export async function getServerSideProps() {
-  return { props: {} }
+  try {
+    const { data: blogs } = await supabase
+      .from('blogs')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    return { props: { blogs: blogs || [] } }
+  } catch (err) {
+    return { props: { blogs: [] } }
+  }
 }

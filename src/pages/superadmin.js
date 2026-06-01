@@ -115,11 +115,19 @@ export default function SuperAdmin() {
     }
   }
 
+  // Count only real signup accounts, not secondary health-passport pets.
+  // Signup roles are: parent | lover | vet | supplier (there is no 'user' role).
+  const realAccounts = allPets.filter(p => !p.is_health_pet)
   const roleCounts = {
-    total: allPets.length,
-    user: allPets.filter(p => !p.role || p.role === 'user').length,
-    vet: allPets.filter(p => p.role === 'vet').length,
-    supplier: allPets.filter(p => p.role === 'supplier').length,
+    total: realAccounts.length,
+    // "Pet Parents" = everyone who signed up to use the social side
+    // (pet parents + pet lovers), i.e. not vets and not suppliers.
+    user: realAccounts.filter(p => {
+      const r = (p.role || '').toLowerCase()
+      return r === 'parent' || r === 'lover' || r === 'user' || r === ''
+    }).length,
+    vet: realAccounts.filter(p => (p.role || '').toLowerCase() === 'vet').length,
+    supplier: realAccounts.filter(p => (p.role || '').toLowerCase() === 'supplier').length,
   }
 
   const verifyPayment = async (id) => {
@@ -136,7 +144,12 @@ export default function SuperAdmin() {
     setBlogSaving(true)
     try {
       const slug = blogForm.slug || blogForm.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
-      const dataToSave = { ...blogForm, slug, author_name: 'Admin', author_avatar: '/logo.png' }
+      const dataToSave = {
+        ...blogForm,
+        slug,
+        author_name: blogForm.author_name || 'PawVerse Social Veterinary Team',
+        author_avatar: blogForm.author_avatar || '/logo.png'
+      }
       
       let res;
       if (editingBlog) {
@@ -211,7 +224,7 @@ export default function SuperAdmin() {
            </div>
            <div style={{ display: 'flex', gap: 15, textAlign: 'center' }}>
               <div style={{ background: 'rgba(255,255,255,0.1)', padding: '10px 18px', borderRadius: 12 }}>
-                <div style={{ fontSize: '1.4rem', fontWeight: 800 }}>{allPets.length}</div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800 }}>{roleCounts.total}</div>
                 <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', opacity: 0.8 }}>Total Users</div>
               </div>
               <div style={{ background: 'rgba(255,255,255,0.1)', padding: '10px 18px', borderRadius: 12 }}>

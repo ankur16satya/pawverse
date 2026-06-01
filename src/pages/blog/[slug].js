@@ -45,6 +45,13 @@ export default function BlogPost({ blog: initialBlog }) {
     </div>
   )
 
+  // Always show the brand as author; treat legacy/placeholder values as empty.
+  const LEGACY_AUTHORS = ['', 'admin', 'pawverse team', 'pawverse']
+  const displayAuthor =
+    blog.author_name && !LEGACY_AUTHORS.includes(blog.author_name.trim().toLowerCase())
+      ? blog.author_name
+      : 'PawVerse Social Veterinary Team'
+
   // Issue 2.6: Article JSON-LD schema for rich results
   const articleSchema = {
     "@context": "https://schema.org",
@@ -53,8 +60,8 @@ export default function BlogPost({ blog: initialBlog }) {
     "description": blog.excerpt || blog.title,
     "image": blog.image_url || 'https://pawversesocial.com/og-image.jpg',
     "author": {
-      "@type": "Person",
-      "name": blog.author_name || 'PawVerse Team'
+      "@type": "Organization",
+      "name": displayAuthor
     },
     "publisher": {
       "@type": "Organization",
@@ -84,7 +91,7 @@ export default function BlogPost({ blog: initialBlog }) {
         article={true}
         publishedTime={blog.created_at}
         modifiedTime={blog.updated_at || blog.created_at}
-        author={blog.author_name}
+        author={displayAuthor}
         canonical={`https://pawversesocial.com/blog/${blog.slug}`}
       />
       {/* Issue 2.6: Article Schema */}
@@ -107,7 +114,7 @@ export default function BlogPost({ blog: initialBlog }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap', color: 'rgba(255,255,255,0.8)', fontSize: '0.9rem', fontWeight: 700 }}>
              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                <img src={blog.author_avatar || '/logo.png'} style={{ width: 35, height: 35, borderRadius: '50%', border: '2px solid #fff' }} />
-               <span style={{ color: '#fff' }}>{blog.author_name || 'Admin'}</span>
+               <span style={{ color: '#fff' }}>{displayAuthor}</span>
              </div>
              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Calendar size={18} /> {new Date(blog.created_at).toLocaleDateString()}</div>
              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={18} /> 5 min read</div>
@@ -120,7 +127,7 @@ export default function BlogPost({ blog: initialBlog }) {
          <img 
             src={blog.image_url || 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&q=80&w=1200'} 
             alt={blog.title} 
-            style={{ width: '100%', height: 'auto', borderRadius: '24px', marginBottom: '40px' }}
+            style={{ width: '100%', aspectRatio: '1200 / 630', objectFit: 'cover', height: 'auto', borderRadius: '24px', marginBottom: '40px', background: '#F3F0FF' }}
          />
          <div style={{ position: 'absolute', left: -80, top: 70, display: 'flex', flexDirection: 'column', gap: 15 }} className="mobile-hide">
              <button style={{ width: 45, height: 45, borderRadius: '50%', background: '#fff', border: '1.5px solid #EDE8FF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#6B7280' }}><Heart size={20} /></button>
@@ -138,12 +145,12 @@ export default function BlogPost({ blog: initialBlog }) {
          <div style={{ marginTop: 80, padding: 40, background: '#F9FAFB', borderRadius: 24, border: '1.5px solid #EDE8FF', display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap' }}>
             <img src={blog.author_avatar || '/logo.png'} style={{ width: 100, height: 100, borderRadius: '50%', objectFit: 'cover', border: '4px solid #fff', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
             <div style={{ flex: 1, minWidth: 250 }}>
-               <h4 style={{ fontFamily: "Baloo 2", fontSize: '1.4rem', color: '#1E1347', margin: '0 0 8px' }}>Written by {blog.author_name || 'Admin'}</h4>
+               <h4 style={{ fontFamily: "Baloo 2", fontSize: '1.4rem', color: '#1E1347', margin: '0 0 8px' }}>Written by {displayAuthor}</h4>
                <p style={{ color: '#6B7280', fontSize: '0.95rem', margin: '0 0 15px', lineHeight: 1.6 }}>
                  Passionate about building the ultimate digital universe for pets. Sharing insights to help you and your fur family live your best life together.
                </p>
                <div style={{ display: 'flex', gap: 12 }}>
-                  <button className="btn-secondary" style={{ padding: '6px 16px', fontSize: '0.8rem' }} onClick={() => router.push('/blogs')}>More from {blog.author_name || 'Admin'}</button>
+                  <button className="btn-secondary" style={{ padding: '6px 16px', fontSize: '0.8rem' }} onClick={() => router.push('/blogs')}>More from {displayAuthor}</button>
                </div>
             </div>
          </div>
