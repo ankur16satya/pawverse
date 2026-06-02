@@ -62,6 +62,7 @@ export default function Feed() {
   const feedAudioRefs = useRef({})
   const feedVideoRefs = useRef({})
   const feedObserver = useRef(null)
+  const loadMoreObserver = useRef(null)
 
   useEffect(() => { 
     setMounted(true)
@@ -122,18 +123,57 @@ export default function Feed() {
   }
 
   useEffect(() => {
+    // Active-post detection (Instagram-style):
+    // We shrink the observer's "root" to a horizontal band across the vertical
+    // centre of the viewport. A post only counts as a candidate to play once it
+    // reaches this centre band, and the post occupying the most of that band is
+    // the dominant one. This means a video starts only when its post is clearly
+    // the focus on screen, and the previous video keeps playing until the next
+    // post has actually taken over the centre. Ranking by intersection *area*
+    // (rather than ratio) keeps this correct even for posts taller than the
+    // viewport, which can never fill a large fraction of their own height.
+    const visibleArea = {} // postId -> area of overlap with the centre band
+
     feedObserver.current = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          if (entry.target.id === 'infinite-scroll-trigger') {
-            loadMore()
-          } else {
-            setActiveFeedPostId(entry.target.getAttribute('data-post-id'))
-          }
+        const postId = entry.target.getAttribute('data-post-id')
+        if (!postId) return
+        if (entry.isIntersecting && entry.intersectionRect) {
+          visibleArea[postId] = entry.intersectionRect.width * entry.intersectionRect.height
+        } else {
+          delete visibleArea[postId]
         }
       })
-    }, { threshold: 0.1 })
-    return () => { if (feedObserver.current) feedObserver.current.disconnect() }
+
+      // The dominant post is the one occupying the most of the centre band.
+      let dominantId = null
+      let maxArea = 0
+      Object.entries(visibleArea).forEach(([id, area]) => {
+        if (area > maxArea) { maxArea = area; dominantId = id }
+      })
+
+      setActiveFeedPostId(prev => {
+        // Switch to the post now dominating the centre band. If nothing is in
+        // the band yet (e.g. mid-scroll between posts), keep the current video
+        // playing so the handoff stays smooth instead of pausing prematurely.
+        return dominantId != null ? dominantId : prev
+      })
+    }, {
+      // Collapse the root to a ~30% tall strip at the vertical centre.
+      rootMargin: '-35% 0px -35% 0px',
+      threshold: [0, 0.25, 0.5, 0.75, 1],
+    })
+
+    // Infinite scroll uses the full viewport (not the centre band) so new posts
+    // load as soon as the sentinel approaches the bottom of the screen.
+    loadMoreObserver.current = new IntersectionObserver((entries) => {
+      entries.forEach(entry => { if (entry.isIntersecting) loadMore() })
+    }, { rootMargin: '200px 0px', threshold: 0 })
+
+    return () => {
+      if (feedObserver.current) feedObserver.current.disconnect()
+      if (loadMoreObserver.current) loadMoreObserver.current.disconnect()
+    }
   }, [hasMore, loadingMore, lastTimestamp])
 
   useEffect(() => {
@@ -1193,7 +1233,7 @@ export default function Feed() {
           })}
 
           {hasMore && (
-            <div id="infinite-scroll-trigger" ref={el => { if (el && feedObserver.current) feedObserver.current.observe(el) }} style={{ padding: '20px', textAlign: 'center', color: '#6C4BF6', fontSize: '1.2rem' }}>
+            <div id="infinite-scroll-trigger" ref={el => { if (el && loadMoreObserver.current) loadMoreObserver.current.observe(el) }} style={{ padding: '20px', textAlign: 'center', color: '#6C4BF6', fontSize: '1.2rem' }}>
               {loadingMore ? '🐾 Loading more...' : 'Scroll for more paws...'}
             </div>
           )}
