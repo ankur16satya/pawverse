@@ -158,11 +158,11 @@ export default function Home({ initialPosts, totalPets, totalPosts, year }) {
         <p style={{ color: '#4B5563', fontWeight: 500, fontSize: '0.98rem', maxWidth: 640, margin: '0 auto 10px', lineHeight: 1.5 }}>
           Join thousands of pet parents across India. Adopt dogs &amp; cats, shop the pet marketplace, track vaccinations, and connect with your local pet community.
         </p>
-        <p style={{ color: '#6B7280', fontSize: '0.88rem', marginBottom: 14 }}>
+        {/* <p style={{ color: '#6B7280', fontSize: '0.88rem', marginBottom: 14 }}>
           {totalPets > 0 && <><strong>{totalPets.toLocaleString('en-IN')}+</strong> pet profiles &nbsp;·&nbsp; </>}
           {totalPosts > 0 && <><strong>{totalPosts.toLocaleString('en-IN')}+</strong> stories shared &nbsp;·&nbsp; </>}
           Free forever 🐾
-        </p>
+        </p> */}
       </section>
 
       {/* === PUBLIC FEED — appears immediately, no scrolling needed === */}
