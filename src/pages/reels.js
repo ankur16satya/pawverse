@@ -58,6 +58,7 @@ export default function Reels() {
   const [sendingComment, setSendingComment] = useState(false)
   const [isReelsMuted, setIsReelsMuted] = useState(false)
   const [likedMap, setLikedMap] = useState({})
+  const [reelVideoState, setReelVideoState] = useState({}) // { [reelId]: { paused, currentTime, duration } }
 
   const fetchComments = async (reelId) => {
     const { data, error } = await supabase
@@ -543,6 +544,10 @@ export default function Reels() {
                     autoPlay={idx === 0}
                     muted
                     preload="auto"
+                    onLoadedMetadata={e => setReelVideoState(prev => ({...prev, [reel.id]: {...(prev[reel.id]||{}), duration: e.target.duration, currentTime: 0, paused: idx !== 0}}))}
+                    onTimeUpdate={e => setReelVideoState(prev => ({...prev, [reel.id]: {...(prev[reel.id]||{}), currentTime: e.target.currentTime, paused: e.target.paused}}))}
+                    onPlay={() => setReelVideoState(prev => ({...prev, [reel.id]: {...(prev[reel.id]||{}), paused: false}}))}
+                    onPause={() => setReelVideoState(prev => ({...prev, [reel.id]: {...(prev[reel.id]||{}), paused: true}}))}
                     onClick={() => {
                       const vid = videoRefs.current[idx]
                       const aud = audioRefs.current[idx]
@@ -589,6 +594,32 @@ export default function Reels() {
                     </div>
                     {reel.caption && <ReelCaption text={reel.caption} />}
                   </div>
+
+                  {/* Compact seek bar — bottom of reel */}
+                  {(()=>{
+                    const rvs = reelVideoState[reel.id] || {}
+                    return (
+                      <div style={{ position: 'absolute', bottom: 66, left: 0, right: 72, padding: '0 12px 8px', display: 'flex', flexDirection: 'column', gap: 4, zIndex: 10 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <button
+                            onClick={() => { const vid=videoRefs.current[idx]; const aud=audioRefs.current[idx]; if(!vid)return; if(vid.paused){vid.play();if(aud)aud.play()}else{vid.pause();if(aud)aud.pause()} }}
+                            style={{ background:'rgba(255,255,255,0.2)', border:'none', borderRadius:'50%', width:28, height:28, color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.75rem', flexShrink:0, backdropFilter:'blur(4px)' }}
+                          >{rvs.paused !== false ? '▶' : '⏸'}</button>
+                          <input
+                            type="range" min={0} max={rvs.duration||100} step={0.1}
+                            value={rvs.currentTime||0}
+                            onChange={e=>{ const vid=videoRefs.current[idx]; if(!vid)return; vid.currentTime=parseFloat(e.target.value); setReelVideoState(prev=>({...prev,[reel.id]:{...(prev[reel.id]||{}),currentTime:parseFloat(e.target.value)}})) }}
+                            style={{ flex:1, accentColor:'#FF6B35', height:3, cursor:'pointer' }}
+                          />
+                          <span style={{ color:'rgba(255,255,255,0.85)', fontSize:'0.65rem', fontWeight:700, fontFamily:'Nunito,sans-serif', flexShrink:0, minWidth:54, textAlign:'right', textShadow:'0 1px 4px rgba(0,0,0,0.8)' }}>
+                            {Math.floor((rvs.currentTime||0)/60)}:{String(Math.floor((rvs.currentTime||0)%60)).padStart(2,'0')}
+                            {' / '}
+                            {Math.floor((rvs.duration||0)/60)}:{String(Math.floor((rvs.duration||0)%60)).padStart(2,'0')}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })()}
 
                   {/* Action buttons — right side */}
                   <div style={{ position: 'absolute', right: 12, bottom: 80, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 }}>

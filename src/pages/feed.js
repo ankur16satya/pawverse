@@ -49,12 +49,16 @@ export default function Feed() {
   const [activeComments, setActiveComments] = useState({})
   const [isFeedMuted, setIsFeedMuted] = useState(false)
   const [activeFeedPostId, setActiveFeedPostId] = useState(null)
+  const [feedVideoState, setFeedVideoState] = useState({}) // { [postId]: { paused, currentTime, duration } }
   const [commentTexts, setCommentTexts] = useState({})
   const [replyTo, setReplyTo] = useState({})
   const [openMenu, setOpenMenu] = useState(null)
   const [editingPost, setEditingPost] = useState(null)
   const [editText, setEditText] = useState('')
   const [trendingTags, setTrendingTags] = useState(['#PawParents','#CatsOfPawVerse','#DogsRule','#BunnyLife','#AdoptDontShop'])
+  const [mentionQuery, setMentionQuery] = useState('')      // text after @
+  const [mentionTarget, setMentionTarget] = useState(null)  // 'post' | postId (for comments)
+  const [repostedIds, setRepostedIds] = useState({})        // { [postId]: true } — posts reposted by me
   const fileInputRef = useRef(null)
   const videoInputRef = useRef(null)
   const menuRef = useRef(null)
@@ -371,6 +375,52 @@ export default function Feed() {
     setLoadingMore(false)
   }
 
+  const handleRepost = async (post) => {
+    if (!user || !pet) return
+    if (repostedIds[post.id]) { alert('You already reposted this! 🔁'); return }
+    if (post.pets?.user_id === user.id) { alert('You cannot repost your own post 😅'); return }
+    if (post.repost_of_id) { alert('You cannot repost a repost 😅'); return }
+    setRepostedIds(prev => ({ ...prev, [post.id]: true }))
+    // Increment count on the original post visually
+    setPosts(prev => prev.map(p => p.id === post.id ? { ...p, reposts_count: (p.reposts_count || 0) + 1 } : p))
+    // Insert a REAL new post into the posts table so it persists on refresh.
+    // Copies original content/media, stores original author info in repost_of_* columns.
+    const { data: newPost, error } = await supabase.from('posts').insert({
+      pet_id: pet.id,
+      content: post.content || post.caption || null,
+      image_url: post.image_url || null,
+      hidden: false,
+      edited: false,
+      repost_of_id: post.id,
+      repost_of_pet_name: post.pets?.pet_name || '',
+      repost_of_owner_name: post.pets?.owner_name || '',
+      repost_of_avatar: post.pets?.avatar_url || null,
+    }).select('*, pets(pet_name, emoji, pet_breed, owner_name, avatar_url, user_id, is_health_pet, role)').single()
+    if (error) {
+      console.error('Repost insert error:', error)
+      // If columns don't exist yet (SQL not run), show message
+      if (error.code === '42703') {
+        alert('⚠️ Please run the Supabase SQL to enable reposts! See the SQL provided earlier.')
+      } else {
+        alert('Could not repost: ' + error.message)
+      }
+      setRepostedIds(prev => ({ ...prev, [post.id]: false }))
+      return
+    }
+    if (newPost) {
+      setPosts(prev => [{ ...newPost, type: 'post', comments_count: 0 }, ...prev])
+    }
+    // Increment reposts_count on original
+    const origTable = post.type === 'reel' ? 'reels' : 'posts'
+    await supabase.from(origTable).update({ reposts_count: (post.reposts_count || 0) + 1 }).eq('id', post.id)
+    // Notify original author
+    if (post.pets?.user_id && post.pets.user_id !== user.id) {
+      await supabase.from('notifications').insert({ user_id: post.pets.user_id, type: 'repost', message: `${pet.pet_name} reposted your post! 🔁|/post/${post.id}` })
+      fetch('/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: post.pets.user_id, title: '🔁 Your post was reposted!', body: `${pet.pet_name} shared your post with their followers!`, url: `/post/${post.id}` }) }).catch(() => {})
+    }
+    playSound('notification')
+  }
+
   const fetchComments = async (postId) => {
     // Determine if this is a reel by checking the posts state
     const thePost = posts.find(p => p.id === postId)
@@ -443,6 +493,7 @@ export default function Feed() {
       
       playSound('notification')
     }
+    await sendMentionNotifications(text, `/post/${postId}`)
   }
 
   const handleDeleteComment = async (comment,postId) => {
@@ -535,6 +586,7 @@ export default function Feed() {
           setPosts([newData,...posts]); setPostText(''); setPostLocation(''); setPostFeeling(''); setPostMusic(null); removeImage()
           await supabase.from('pets').update({paw_coins:(pet.paw_coins||0)+15}).eq('id',pet.id)
           setPet(p=>({...p,paw_coins:(p.paw_coins||0)+15}))
+          await sendMentionNotifications(postText, `/post/${data.id}`)
           const { data:fS } = await supabase.from('friend_requests').select('receiver_id').eq('sender_id',user.id).eq('status','accepted')
           const { data:fR } = await supabase.from('friend_requests').select('sender_id').eq('receiver_id',user.id).eq('status','accepted')
           for (const fid of [...(fS||[]).map(f=>f.receiver_id),...(fR||[]).map(f=>f.sender_id)]) {
@@ -568,6 +620,7 @@ export default function Feed() {
           setPosts([newData,...posts]); setPostText(''); setPostLocation(''); setPostFeeling(''); setPostMusic(null); removeImage()
           await supabase.from('pets').update({paw_coins:(pet.paw_coins||0)+10}).eq('id',pet.id)
           setPet(p=>({...p,paw_coins:(p.paw_coins||0)+10}))
+          await sendMentionNotifications(postText, `/post/${data.id}`)
           const { data:fS } = await supabase.from('friend_requests').select('receiver_id').eq('sender_id',user.id).eq('status','accepted')
           const { data:fR } = await supabase.from('friend_requests').select('sender_id').eq('receiver_id',user.id).eq('status','accepted')
           for (const fid of [...(fS||[]).map(f=>f.receiver_id),...(fR||[]).map(f=>f.sender_id)]) {
@@ -786,6 +839,38 @@ export default function Feed() {
   const tagSuggestions = tagMatch ? trendingTags.filter(t=>t.toLowerCase().startsWith(`#${tagMatch[1]}`.toLowerCase())) : []
   const insertTag = (tag) => { setPostText(postText.replace(/#([\w]*)$/,tag+' ')); textareaRef.current?.focus() }
 
+  // ── @mention helpers ──
+  const getMentionSuggestions = (query) => {
+    if (!query && query !== '') return []
+    return friends.filter(f => f.pet_name?.toLowerCase().startsWith(query.toLowerCase())).slice(0, 6)
+  }
+  const insertMention = (petName, targetId) => {
+    if (targetId === 'post') {
+      setPostText(prev => prev.replace(/@[\w\s]*$/, `@${petName} `))
+      textareaRef.current?.focus()
+    } else {
+      setCommentTexts(prev => ({ ...prev, [targetId]: (prev[targetId] || '').replace(/@[\w\s]*$/, `@${petName} `) }))
+    }
+    setMentionQuery('')
+    setMentionTarget(null)
+  }
+  const handleMentionInput = (val, targetId) => {
+    const match = val.match(/@([\w\s]*)$/)
+    if (match) { setMentionQuery(match[1]); setMentionTarget(targetId) }
+    else { setMentionQuery(''); setMentionTarget(null) }
+  }
+  const sendMentionNotifications = async (text, linkPath) => {
+    const mentioned = (text.match(/@([\w]+)/g) || []).map(m => m.slice(1))
+    if (!mentioned.length) return
+    for (const name of mentioned) {
+      const friend = friends.find(f => f.pet_name?.toLowerCase() === name.toLowerCase())
+      if (friend && friend.user_id && friend.user_id !== user?.id) {
+        await supabase.from('notifications').insert({ user_id: friend.user_id, type: 'mention', message: `${pet?.pet_name} mentioned you in a post! 🐾|${linkPath}` })
+        fetch('/api/push', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ user_id: friend.user_id, title: '🐾 You were mentioned!', body: `${pet?.pet_name} mentioned @${friend.pet_name} in a post!`, url: linkPath }) }).catch(()=>{})
+      }
+    }
+  }
+
   // Standard hydration-safe loading state
   if (loading || !mounted) {
     return (
@@ -858,9 +943,20 @@ export default function Feed() {
                   ref={textareaRef}
                   className="feed-composer-textarea"
                   value={postText}
-                  onChange={e=>setPostText(e.target.value)}
+                  onChange={e=>{ setPostText(e.target.value); handleMentionInput(e.target.value,'post') }}
                   placeholder={`What's ${pet?.pet_name||'your pet'} up to today? 🐾`}
                 />
+                {/* @mention dropdown for post */}
+                {mentionTarget==='post'&&mentionQuery!==null&&getMentionSuggestions(mentionQuery).length>0&&(
+                  <div style={{position:'absolute',zIndex:200,background:'#fff',border:'1px solid #EDE8FF',borderRadius:12,boxShadow:'0 8px 24px rgba(108,75,246,0.12)',padding:6,minWidth:200,top:'100%',left:0}}>
+                    {getMentionSuggestions(mentionQuery).map(f=>(
+                      <div key={f.id} onClick={()=>insertMention(f.pet_name,'post')} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:8,cursor:'pointer',transition:'background 0.15s'}} onMouseEnter={e=>e.currentTarget.style.background='#F3F0FF'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                        <div style={{width:30,height:30,borderRadius:'50%',background:'#F0EBFF',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',flexShrink:0}}>{f.avatar_url?<img src={f.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="av"/>:f.emoji}</div>
+                        <div><div style={{fontWeight:800,fontSize:'0.85rem',color:'#1E1347'}}>@{f.pet_name}</div><div style={{fontSize:'0.7rem',color:'#9CA3AF'}}>by {f.owner_name}</div></div>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {tagSuggestions.length>0&&(
                   <div className="feed-tag-suggestions">
                     <div className="feed-tag-suggestions-label">Trending Tags</div>
@@ -1033,9 +1129,19 @@ export default function Feed() {
             
             const isMyPost=user && post.pets.user_id===user.id
             const comments=activeComments[post.id]
-            const postKey = `${post.type}-${post.id}`
+            const postKey = post._repostId || `${post.type}-${post.id}`
             return (
               <div key={postKey} data-post-id={post.id} className="card feed-post fade-up" ref={el => { if (el && feedObserver.current) feedObserver.current.observe(el) }}>
+
+                {/* Repost banner — shows when this post is a repost of another */}
+                {post.repost_of_id && (
+                  <div style={{display:'flex',alignItems:'center',gap:8,padding:'7px 14px',background:'#F3F0FF',borderBottom:'1px solid #EDE8FF',borderRadius:'14px 14px 0 0',fontSize:'0.78rem',fontWeight:700,color:'#6C4BF6'}}>
+                    <div style={{width:20,height:20,borderRadius:'50%',background:'#E0D5FF',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',flexShrink:0}}>
+                      {post.repost_of_avatar ? <img src={post.repost_of_avatar} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="av"/> : '🐾'}
+                    </div>
+                    🔁 <span style={{color:'#1E1347'}}>Repost</span> &nbsp;·&nbsp; Originally by <strong>{post.repost_of_pet_name}</strong>
+                  </div>
+                )}
 
                 <div className="feed-post-header">
                   <div className={`feed-post-avatar${!isMyPost?' clickable':''}`} onClick={()=>!isMyPost&&router.push(`/user/${post.pets?.user_id}`)}>
@@ -1105,6 +1211,12 @@ export default function Feed() {
                       <p className="feed-post-text">
                         {(post.content||post.caption).split(/(\s+)/).map((word,i)=>{
                           if (word.startsWith('#')) return <span key={i} className="feed-hashtag" onClick={()=>router.push(`/feed?tag=${word.slice(1)}`)}>{word}</span>
+                          if (word.startsWith('@') && word.length > 1) {
+                            const name = word.slice(1).replace(/[^\w]/g,'')
+                            const allUsers = [...friends, ...suggestions]
+                            const found = allUsers.find(f => f.pet_name?.toLowerCase() === name.toLowerCase())
+                            return <span key={i} onClick={()=>found && router.push(`/user/${found.user_id}`)} style={{color:'#6C4BF6',fontWeight:800,cursor:found?'pointer':'default',textDecoration:found?'underline':'none'}}>{word}</span>
+                          }
                           if (/^https?:\/\/[^\s]+$/.test(word)) return <a key={i} href={word} target="_blank" rel="noopener noreferrer" style={{color:'#6C4BF6',fontWeight:700,wordBreak:'break-all',textDecoration:'underline'}}>{word}</a>
                           return word
                         })}
@@ -1125,11 +1237,55 @@ export default function Feed() {
                   </div>
                 )}
 
-                {post.video_url&&(
-                  <div className="feed-post-video-wrap">
-                    <video ref={el => feedVideoRefs.current[post.id] = el} src={post.video_url} muted={post.audio_url ? true : isFeedMuted} loop playsInline controls={false} className="feed-post-video" />
+                {post.video_url&&(()=>{const vs=feedVideoState[post.id]||{};const isActive=activeFeedPostId===String(post.id);return(
+                  <div className="feed-post-video-wrap" style={{position:'relative',background:'#000',borderRadius:14,overflow:'hidden'}}>
+                    <video
+                      ref={el=>feedVideoRefs.current[post.id]=el}
+                      src={post.video_url}
+                      muted={post.audio_url?true:isFeedMuted}
+                      loop
+                      playsInline
+                      preload="metadata"
+                      className="feed-post-video"
+                      onLoadedMetadata={e=>setFeedVideoState(prev=>({...prev,[post.id]:{...prev[post.id],duration:e.target.duration,currentTime:0,paused:true}}))}
+                      onTimeUpdate={e=>setFeedVideoState(prev=>({...prev,[post.id]:{...prev[post.id],currentTime:e.target.currentTime,paused:e.target.paused}}))}
+                      onPlay={()=>setFeedVideoState(prev=>({...prev,[post.id]:{...prev[post.id],paused:false}}))}
+                      onPause={()=>setFeedVideoState(prev=>({...prev,[post.id]:{...prev[post.id],paused:true}}))}
+                      onClick={()=>{const vid=feedVideoRefs.current[post.id];if(!vid)return;vid.paused?vid.play():vid.pause()}}
+                      style={{width:'100%',display:'block',cursor:'pointer',maxHeight:380,objectFit:'cover'}}
+                    />
+                    {/* Play/Pause centre overlay — shows when paused */}
+                    {(vs.paused||!isActive)&&(
+                      <div onClick={()=>{const vid=feedVideoRefs.current[post.id];if(!vid)return;vid.play()}} style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,0.25)',cursor:'pointer',transition:'background 0.2s'}}>
+                        <div style={{width:56,height:56,borderRadius:'50%',background:'rgba(255,255,255,0.9)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'1.6rem',boxShadow:'0 4px 16px rgba(0,0,0,0.3)'}}>
+                          ▶
+                        </div>
+                      </div>
+                    )}
+                    {/* Custom bottom controls bar */}
+                    <div style={{position:'absolute',bottom:0,left:0,right:0,padding:'8px 12px',background:'linear-gradient(to top,rgba(0,0,0,0.7) 0%,transparent 100%)',display:'flex',alignItems:'center',gap:8}}>
+                      <button
+                        onClick={()=>{const vid=feedVideoRefs.current[post.id];if(!vid)return;vid.paused?vid.play():vid.pause()}}
+                        style={{background:'rgba(255,255,255,0.2)',border:'none',borderRadius:'50%',width:28,height:28,color:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'0.75rem',flexShrink:0,backdropFilter:'blur(4px)'}}
+                      >{(vs.paused||!isActive)?'▶':'⏸'}</button>
+                      <input
+                        type="range" min={0} max={vs.duration||100} step={0.1}
+                        value={vs.currentTime||0}
+                        onChange={e=>{const vid=feedVideoRefs.current[post.id];if(!vid)return;vid.currentTime=parseFloat(e.target.value);setFeedVideoState(prev=>({...prev,[post.id]:{...prev[post.id],currentTime:parseFloat(e.target.value)}}))}}
+                        style={{flex:1,accentColor:'#FF6B9D',height:3,cursor:'pointer'}}
+                      />
+                      <span style={{color:'#fff',fontSize:'0.68rem',fontWeight:700,fontFamily:'Nunito,sans-serif',flexShrink:0,minWidth:60,textAlign:'right'}}>
+                        {Math.floor((vs.currentTime||0)/60)}:{String(Math.floor((vs.currentTime||0)%60)).padStart(2,'0')}
+                        {' / '}
+                        {Math.floor((vs.duration||0)/60)}:{String(Math.floor((vs.duration||0)%60)).padStart(2,'0')}
+                      </span>
+                      <button
+                        onClick={toggleFeedPostAudio}
+                        style={{background:'rgba(255,255,255,0.2)',border:'none',borderRadius:'50%',width:28,height:28,color:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'0.75rem',flexShrink:0,backdropFilter:'blur(4px)'}}
+                      >{isFeedMuted?'🔇':'🔊'}</button>
+                    </div>
                   </div>
-                )}
+                )})()}
 
                 {post.audio_url && (() => {
                   try {
@@ -1147,6 +1303,7 @@ export default function Feed() {
                       💬 {activeComments[post.id] !== undefined ? activeComments[post.id].length : (post.comments_count||0)}
                     </span>
                     <span>🔗 {post.shares_count||0}</span>
+                  <span>🔁 {post.reposts_count||0}</span>
                   </div>
                 </div>
 
@@ -1154,6 +1311,7 @@ export default function Feed() {
                   {[
                     {label:post.liked_by_me?'❤️ Pawed':'🐾 Paw it',action:()=>toggleLike(post),active:post.liked_by_me},
                     {label:'💬 Comment',action:()=>toggleComments(post.id),active:comments!==undefined},
+                    {label:repostedIds[post.id]?'🔁 Reposted':'🔁 Repost',action:()=>handleRepost(post),active:!!repostedIds[post.id]},
                     {label:'🔗 Share',action:()=>handleShare(post),active:false},
                   ].map(btn=>(
                     <button key={btn.label} className={`feed-action-btn${btn.active?' active':''}`} onClick={btn.action}>{btn.label}</button>
@@ -1169,10 +1327,21 @@ export default function Feed() {
                       <input
                         className="feed-comment-input"
                         value={commentTexts[post.id]||''}
-                        onChange={e=>setCommentTexts(prev=>({...prev,[post.id]:e.target.value}))}
+                        onChange={e=>{ setCommentTexts(prev=>({...prev,[post.id]:e.target.value})); handleMentionInput(e.target.value, post.id) }}
                         onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&e.ctrlKey)handleComment(post.id)}}
-                        placeholder="Write a comment..."
+                        placeholder="Write a comment... (use @name to mention)"
                       />
+                      {/* @mention dropdown for comment */}
+                      {mentionTarget===post.id&&getMentionSuggestions(mentionQuery).length>0&&(
+                        <div style={{position:'absolute',zIndex:200,background:'#fff',border:'1px solid #EDE8FF',borderRadius:10,boxShadow:'0 6px 20px rgba(0,0,0,0.1)',padding:4,minWidth:180,bottom:'100%',left:0}}>
+                          {getMentionSuggestions(mentionQuery).map(f=>(
+                            <div key={f.id} onClick={()=>insertMention(f.pet_name,post.id)} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:8,cursor:'pointer',transition:'background 0.15s'}} onMouseEnter={e=>e.currentTarget.style.background='#F3F0FF'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                              <div style={{width:26,height:26,borderRadius:'50%',background:'#F0EBFF',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',flexShrink:0}}>{f.avatar_url?<img src={f.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="av"/>:f.emoji}</div>
+                              <div style={{fontWeight:700,fontSize:'0.82rem',color:'#1E1347'}}>@{f.pet_name}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <button className="feed-comment-send" onClick={()=>handleComment(post.id)} disabled={!commentTexts[post.id]?.trim()}>Send</button>
                     </div>
 

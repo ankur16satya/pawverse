@@ -4,7 +4,39 @@ import { supabase } from '../../lib/supabase'
 import NavBar from '../../components/NavBar'
 import SEO from '../../components/SEO'
 
-export default function PostPage() {
+// ── Server-side: fetch post data so OG tags are in the HTML for bots/crawlers ──
+export async function getServerSideProps({ params }) {
+  const { id } = params
+  let postData = null
+  let isReel = false
+
+  try {
+    const { data: p } = await supabase
+      .from('posts')
+      .select('id, content, image_url, created_at, pets(pet_name, owner_name, avatar_url, emoji)')
+      .eq('id', id)
+      .single()
+
+    if (p) {
+      postData = p
+    } else {
+      const { data: r } = await supabase
+        .from('reels')
+        .select('id, caption, video_url, created_at, pets(pet_name, owner_name, avatar_url, emoji)')
+        .eq('id', id)
+        .single()
+      if (r) { postData = r; isReel = true }
+    }
+  } catch (e) {}
+
+  return {
+    props: {
+      initialPost: postData ? { ...postData, is_reel: isReel } : null
+    }
+  }
+}
+
+export default function PostPage({ initialPost }) {
   const router = useRouter()
   const { id } = router.query
   const [user, setUser] = useState(null)
@@ -165,16 +197,26 @@ export default function PostPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, rgba(213,134,200,1), rgba(105,201,249,1))', paddingTop: 110 }}>
-      {/* Issue 4.4: Per-post SEO for social sharing */}
-      {post && (
-        <SEO
-          title={`${post.pets?.pet_name || 'Pet'}'s post on PawVerse`}
-          description={post.caption ? post.caption.slice(0, 155) : `See ${post.pets?.pet_name || 'a pet'}'s post on PawVerse — India's pet social network.`}
-          ogImage={post.media_url || post.image_url}
-          ogType={post.is_reel ? 'video.other' : 'article'}
-          canonical={`https://pawversesocial.com/post/${post.id}`}
-        />
-      )}
+      {/* ── Dynamic OG tags — use initialPost (SSR) so bots see real image immediately ── */}
+      {(() => {
+        const ogPost = post || initialPost
+        if (!ogPost) return null
+        const petName = ogPost.pets?.pet_name || 'A Pet'
+        const text = ogPost.content || ogPost.caption || ''
+        const ogTitle = `${petName} on PawVerse 🐾`
+        const ogDesc = text ? text.slice(0, 155) : `See ${petName}'s post on PawVerse — India's pet social network.`
+        // Image priority: post image → pet avatar → default site OG image
+        const ogImage = ogPost.image_url || ogPost.pets?.avatar_url || 'https://pawversesocial.com/og-image.jpg'
+        return (
+          <SEO
+            title={ogTitle}
+            description={ogDesc}
+            ogImage={ogImage}
+            ogType={ogPost.is_reel ? 'video.other' : 'article'}
+            canonical={`https://pawversesocial.com/post/${ogPost.id}`}
+          />
+        )
+      })()}
       {user && <NavBar user={user} pet={pet} />}
 
       {/* If not logged in, show a top banner */}
