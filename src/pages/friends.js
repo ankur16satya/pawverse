@@ -213,7 +213,20 @@ export default function Friends() {
 
   const handleAddFriend = async (suggPet) => {
     if (!user || !pet) return
+    if (friendStatuses[suggPet.user_id] === 'pending') return
     setFriendStatuses(prev => ({ ...prev, [suggPet.user_id]: 'pending' }))
+
+    // Pre-check DB to prevent duplicate friend requests
+    const { data: existing } = await supabase
+      .from('friend_requests')
+      .select('id')
+      .or(`and(sender_id.eq.${user.id},receiver_id.eq.${suggPet.user_id}),and(sender_id.eq.${suggPet.user_id},receiver_id.eq.${user.id})`)
+      .maybeSingle()
+
+    if (existing) {
+      setSuggestions(prev => prev.filter(s => s.user_id !== suggPet.user_id))
+      return
+    }
 
     const { data: newReq, error } = await supabase
       .from('friend_requests')
@@ -242,12 +255,16 @@ export default function Friends() {
   }
 
   const handleRemoveFriend = async (friendPet) => {
-    await supabase
-      .from('friend_requests')
-      .delete()
-      .or(`and(sender_id.eq.${user.id},receiver_id.eq.${friendPet.user_id}),and(sender_id.eq.${friendPet.user_id},receiver_id.eq.${user.id})`)
+    if (!user || !friendPet) return
+    setActionLoading(prev => ({ ...prev, [friendPet.id]: 'removing' }))
+
+    await Promise.all([
+      supabase.from('friend_requests').delete().eq('sender_id', user.id).eq('receiver_id', friendPet.user_id),
+      supabase.from('friend_requests').delete().eq('sender_id', friendPet.user_id).eq('receiver_id', user.id)
+    ])
 
     setFriends(prev => prev.filter(f => f.user_id !== friendPet.user_id))
+    setActionLoading(prev => ({ ...prev, [friendPet.id]: null }))
   }
 
   // Avatar component reused

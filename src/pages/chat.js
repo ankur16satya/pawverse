@@ -27,8 +27,28 @@ export default function Chat() {
   const [totalUnread, setTotalUnread] = useState(0)
   const [isMobile, setIsMobile] = useState(false)
   const [longPressMenu, setLongPressMenu] = useState(null)
+  const [lightboxImg, setLightboxImg] = useState(null)
+  const [loadingMoreMsgs, setLoadingMoreMsgs] = useState(false)
+  const [hasMoreMsgs, setHasMoreMsgs] = useState(false)
   const pressTimer = useRef(null)
   const [hoveredMsgId, setHoveredMsgId] = useState(null)
+
+  const downloadImage = async (url, filename = 'pawverse-chat-image.jpg') => {
+    try {
+      const response = await fetch(url)
+      const blob = await response.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(blobUrl)
+    } catch (e) {
+      window.open(url, '_blank')
+    }
+  }
 
   const messagesEndRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -223,42 +243,49 @@ export default function Chat() {
   }
 
   const fetchFriendsAndConversations = async (userId) => {
-    const { data: sent } = await supabase
-      .from('friend_requests').select('receiver_id')
-      .eq('sender_id', userId).eq('status', 'accepted')
-    const { data: received } = await supabase
-      .from('friend_requests').select('sender_id')
-      .eq('receiver_id', userId).eq('status', 'accepted')
+    const [{ data: sent }, { data: received }, { data: convs }] = await Promise.all([
+      supabase.from('friend_requests').select('receiver_id').eq('sender_id', userId).eq('status', 'accepted'),
+      supabase.from('friend_requests').select('sender_id').eq('receiver_id', userId).eq('status', 'accepted'),
+      supabase.from('conversations').select('id,participant_1,participant_2,last_message,last_message_at,participant_1_cleared_at,participant_2_cleared_at')
+        .or(`participant_1.eq.${userId},participant_2.eq.${userId}`)
+        .order('last_message_at', { ascending: false })
+    ])
 
-    const friendList = []
-    for (const req of (sent || [])) {
-      const { data: p } = await supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,owner_name').eq('user_id', req.receiver_id).eq('is_health_pet', false).single()
-      if (p) friendList.push(p)
-    }
-    for (const req of (received || [])) {
-      const { data: p } = await supabase.from('pets').select('id,user_id,pet_name,emoji,avatar_url,owner_name').eq('user_id', req.sender_id).eq('is_health_pet', false).single()
-      if (p) friendList.push(p)
+    const friendUserIds = [
+      ...(sent || []).map(r => r.receiver_id),
+      ...(received || []).map(r => r.sender_id)
+    ]
+
+    let friendList = []
+    if (friendUserIds.length > 0) {
+      const { data: pets } = await supabase
+        .from('pets')
+        .select('id,user_id,pet_name,emoji,avatar_url,owner_name')
+        .in('user_id', friendUserIds)
+        .eq('is_health_pet', false)
+      friendList = pets || []
     }
     setFriends(friendList)
-
-    const { data: convs } = await supabase
-      .from('conversations').select('id,participant_1,participant_2,last_message,last_message_at,participant_1_cleared_at,participant_2_cleared_at')
-      .or(`participant_1.eq.${userId},participant_2.eq.${userId}`)
-      .order('last_message_at', { ascending: false })
     setConversations(convs || [])
 
-    // Count unread per conversation
+    // Batch query unread count for all conversations
     let total = 0
     const counts = {}
-    for (const conv of (convs || [])) {
-      const { count } = await supabase
+    if (convs && convs.length > 0) {
+      const convIds = convs.map(c => c.id)
+      const { data: unreadMsgs } = await supabase
         .from('messages')
-        .select('*', { count: 'exact', head: true })
-        .eq('conversation_id', conv.id)
+        .select('conversation_id')
+        .in('conversation_id', convIds)
         .eq('is_read', false)
         .neq('sender_id', userId)
-      counts[conv.id] = count || 0
-      total += count || 0
+
+      if (unreadMsgs) {
+        for (const m of unreadMsgs) {
+          counts[m.conversation_id] = (counts[m.conversation_id] || 0) + 1
+          total += 1
+        }
+      }
     }
     setUnreadCounts(counts)
     setTotalUnread(total)
@@ -268,6 +295,7 @@ export default function Chat() {
     setActiveFriend(friend)
     setMessages([])
     setShowEmoji(false)
+    setHasMoreMsgs(false)
 
     let conv = conversations.find(c =>
       (c.participant_1 === user.id && c.participant_2 === friend.user_id) ||
@@ -291,12 +319,17 @@ export default function Chat() {
     setActiveConv(conv)
     activeConvRef.current = conv
 
-    // Fetch messages
-    const { data: msgs } = await supabase
+    // Fetch the most recent 200 messages descending to avoid 1000-row PostgREST truncation cutoff
+    const MSG_LIMIT = 200
+    const { data: rawMsgs } = await supabase
       .from('messages').select('id,conversation_id,sender_id,content,created_at,is_read,shared_post_id,shared_post_preview,image_url,deleted_for')
       .eq('conversation_id', conv.id)
-      .order('created_at', { ascending: true })
-      
+      .order('created_at', { ascending: false })
+      .limit(MSG_LIMIT)
+
+    const msgs = (rawMsgs || []).reverse()
+    setHasMoreMsgs((rawMsgs || []).length === MSG_LIMIT)
+
     const clearedAt = conv.participant_1 === user.id ? conv.participant_1_cleared_at : conv.participant_2_cleared_at
     
     let filteredMsgs = msgs || []
@@ -327,6 +360,33 @@ export default function Chat() {
     const prevUnread = unreadCounts[conv.id] || 0
     setUnreadCounts(prev => ({ ...prev, [conv.id]: 0 }))
     setTotalUnread(prev => Math.max(0, prev - prevUnread))
+  }
+
+  const loadEarlierMessages = async () => {
+    if (!activeConv || loadingMoreMsgs || messages.length === 0) return
+    setLoadingMoreMsgs(true)
+
+    const oldestTimestamp = messages[0].created_at
+    const MSG_LIMIT = 200
+
+    const { data: rawMsgs } = await supabase
+      .from('messages').select('id,conversation_id,sender_id,content,created_at,is_read,shared_post_id,shared_post_preview,image_url,deleted_for')
+      .eq('conversation_id', activeConv.id)
+      .lt('created_at', oldestTimestamp)
+      .order('created_at', { ascending: false })
+      .limit(MSG_LIMIT)
+
+    const clearedAt = activeConv.participant_1 === user.id ? activeConv.participant_1_cleared_at : activeConv.participant_2_cleared_at
+
+    let olderMsgs = (rawMsgs || []).reverse()
+    if (clearedAt) {
+      olderMsgs = olderMsgs.filter(m => new Date(m.created_at) > new Date(clearedAt))
+    }
+    olderMsgs = olderMsgs.filter(m => !(m.deleted_for || []).includes(user.id))
+
+    setHasMoreMsgs((rawMsgs || []).length === MSG_LIMIT)
+    setMessages(prev => [...olderMsgs, ...prev])
+    setLoadingMoreMsgs(false)
   }
 
   const sendMessage = async () => {
@@ -754,6 +814,21 @@ export default function Chat() {
 
               {/* Messages */}
               <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: 6, minHeight: 0 }}>
+                {hasMoreMsgs && (
+                  <div style={{ textAlign: 'center', marginBottom: 10 }}>
+                    <button
+                      onClick={loadEarlierMessages}
+                      disabled={loadingMoreMsgs}
+                      style={{
+                        padding: '6px 14px', borderRadius: 20, border: 'none',
+                        background: '#EDE8FF', color: '#6C4BF6', fontFamily: 'Nunito, sans-serif',
+                        fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer'
+                      }}>
+                      {loadingMoreMsgs ? 'Loading earlier messages...' : '⬆️ Load Earlier Messages'}
+                    </button>
+                  </div>
+                )}
+
                 {messages.length === 0 && (
                   <div style={{ textAlign: 'center', marginTop: 40 }}>
                     <div style={{ fontSize: '3rem', marginBottom: 8 }}>👋</div>
@@ -802,8 +877,22 @@ export default function Chat() {
 
                       <div style={{ maxWidth: '65%', display: 'flex', flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start' }}>
                         {msg.image_url && (
-                          <img src={msg.image_url} alt="shared"
-                            style={{ maxWidth: 220, maxHeight: 220, borderRadius: 14, objectFit: 'cover', display: 'block', border: '2px solid #EDE8FF', marginBottom: msg.content ? 4 : 0 }} />
+                          <div style={{ position: 'relative', display: 'inline-block', marginBottom: msg.content ? 4 : 0 }}>
+                            <img src={msg.image_url} alt="shared"
+                              onClick={(e) => { e.stopPropagation(); setLightboxImg(msg.image_url); }}
+                              style={{ maxWidth: 220, maxHeight: 220, borderRadius: 14, objectFit: 'cover', display: 'block', border: '2px solid #EDE8FF', cursor: 'pointer' }} />
+                            <button
+                              onClick={(e) => { e.stopPropagation(); downloadImage(msg.image_url); }}
+                              title="Download picture"
+                              style={{
+                                position: 'absolute', bottom: 8, right: 8, background: 'rgba(0,0,0,0.65)',
+                                color: '#fff', border: 'none', borderRadius: '50%', width: 28, height: 28,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                                fontSize: '0.85rem', boxShadow: '0 2px 6px rgba(0,0,0,0.3)'
+                              }}>
+                              ⬇️
+                            </button>
+                          </div>
                         )}
                         {msg.content && (
                           <div style={{
@@ -1008,6 +1097,23 @@ export default function Chat() {
               </button>
             )}
           </div>
+        </div>
+      )}
+      {/* Lightbox image viewer with Download button */}
+      {lightboxImg && (
+        <div onClick={() => setLightboxImg(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 10001, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 20, cursor: 'zoom-out' }}>
+          <div style={{ position: 'absolute', top: 18, right: 22, display: 'flex', gap: 12, alignItems: 'center' }}>
+            <button onClick={(e) => { e.stopPropagation(); downloadImage(lightboxImg); }}
+              style={{ background: 'linear-gradient(135deg,#FF6B35,#6C4BF6)', border: 'none', color: '#fff', fontSize: '0.88rem', fontWeight: 800, cursor: 'pointer', borderRadius: 20, padding: '8px 16px', fontFamily: 'Nunito, sans-serif' }}>
+              ⬇️ Download Picture
+            </button>
+            <button onClick={() => setLightboxImg(null)}
+              style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', fontSize: '1.4rem', cursor: 'pointer', borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+          </div>
+          <img src={lightboxImg} alt="full"
+            onClick={e => e.stopPropagation()}
+            style={{ maxWidth: '90vw', maxHeight: '82vh', borderRadius: 16, objectFit: 'contain', boxShadow: '0 8px 60px rgba(0,0,0,0.6)' }} />
         </div>
       )}
     </div>

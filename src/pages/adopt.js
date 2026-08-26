@@ -28,9 +28,10 @@ export default function Adopt() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) { router.push('/login?next=' + encodeURIComponent(router.asPath)); return }
-      setUser(session.user)
-      supabase.from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).single().then(({ data }) => setPet(data))
+      if (session) {
+        setUser(session.user)
+        supabase.from('pets').select('*').eq('user_id', session.user.id).eq('is_health_pet', false).maybeSingle().then(({ data }) => setPet(data))
+      }
       fetchListings()
     })
   }, [])
@@ -74,8 +75,12 @@ export default function Adopt() {
   })
 
   const express = async (a) => {
+    if (!user) {
+      router.push('/login?next=' + encodeURIComponent(router.asPath))
+      return
+    }
     try {
-      if (user && a.user_id && a.user_id !== user.id) {
+      if (a.user_id && a.user_id !== user.id) {
          const friendId = a.user_id;
          let conv = null;
          const { data: existingConvs } = await supabase.from('conversations').select('*')
@@ -244,7 +249,7 @@ export default function Adopt() {
               ))}
             </div>
           </div>
-          <button className="btn-primary" style={{ padding: '10px 20px', borderRadius: 30, fontSize: '0.9rem', marginTop: 10, background: '#fff', color: '#6C4BF6', border: '2px solid #fff' }} onClick={() => setShowAddForm(true)}>
+          <button className="btn-primary" style={{ padding: '10px 20px', borderRadius: 30, fontSize: '0.9rem', marginTop: 10, background: '#fff', color: '#6C4BF6', border: '2px solid #fff' }} onClick={() => { if (!user) { router.push('/login?next=' + encodeURIComponent(router.asPath)); return; } setShowAddForm(true); }}>
             + List a Pet
           </button>
         </div>

@@ -15,7 +15,7 @@ export async function getServerSideProps({ params }) {
       .from('posts')
       .select('id, content, image_url, created_at, pets(pet_name, owner_name, avatar_url, emoji)')
       .eq('id', id)
-      .single()
+      .maybeSingle()
 
     if (p) {
       postData = p
@@ -24,10 +24,12 @@ export async function getServerSideProps({ params }) {
         .from('reels')
         .select('id, caption, video_url, created_at, pets(pet_name, owner_name, avatar_url, emoji)')
         .eq('id', id)
-        .single()
+        .maybeSingle()
       if (r) { postData = r; isReel = true }
     }
-  } catch (e) {}
+  } catch (e) {
+    console.error('getServerSideProps error:', e)
+  }
 
   return {
     props: {
@@ -205,8 +207,21 @@ export default function PostPage({ initialPost }) {
         const text = ogPost.content || ogPost.caption || ''
         const ogTitle = `${petName} on PawVerse 🐾`
         const ogDesc = text ? text.slice(0, 155) : `See ${petName}'s post on PawVerse — India's pet social network.`
-        // Image priority: post image → pet avatar → default site OG image
-        const ogImage = ogPost.image_url || ogPost.pets?.avatar_url || 'https://pawversesocial.com/og-image.jpg'
+        
+        // Image priority: post image → reel video thumbnail frame → pet avatar → default site OG image
+        let ogImage = ogPost.image_url
+        if (!ogImage && ogPost.video_url) {
+          ogImage = ogPost.video_url.replace(/\.(mp4|mov|webm|m4v)(\?.*)?$/i, '.jpg')
+        }
+        if (!ogImage) {
+          ogImage = ogPost.pets?.avatar_url
+        }
+        if (!ogImage) {
+          ogImage = 'https://pawversesocial.com/og-image.jpg'
+        } else if (ogImage.startsWith('/')) {
+          ogImage = `https://pawversesocial.com${ogImage}`
+        }
+
         return (
           <SEO
             title={ogTitle}

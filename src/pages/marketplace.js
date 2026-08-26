@@ -69,52 +69,51 @@ export default function Marketplace() {
 
   const init = async () => {
     const { data: { session } } = await supabase.auth.getSession()
-    if (!session) { router.push('/login?next=' + encodeURIComponent(router.asPath)); return }
-    setUser(session.user)
+    if (session) {
+      setUser(session.user)
 
-    // Fetch all pets and prioritize the professional one
-    const { data: allPets } = await supabase
-      .from('pets')
-      .select('*')
-      .eq('user_id', session.user.id)
-    
-    let petData = null
-    if (allPets && allPets.length > 0) {
-      // Sort: Professional Social Profiles > Standard Social Profiles > Hidden Profiles
-      const sorted = allPets.sort((a,b) => {
-        const score = (p) => {
-          let s = 0
-          if (!p.is_health_pet) s += 10
-          if (p.role === 'vet') s += 5
-          if (p.role === 'supplier') s += 3
-          return s
-        }
-        return score(b) - score(a)
-      })
-      petData = sorted[0]
-    }
-
-    if (petData) {
-      // PROACTIVE SELF-HEALING:
-      const name = (petData.pet_name || '').toLowerCase()
-      const currentRole = (petData.role || 'user').toLowerCase()
-      if (currentRole === 'user') {
-        let newRole = null
-        if (name.includes('vet') || name.includes('hospital') || name.includes('clinic') || name.includes('doctor')) newRole = 'vet'
-        else if (name.includes('shop') || name.includes('store') || name.includes('supply') || name.includes('pet store')) newRole = 'supplier'
-        if (newRole) {
-          await supabase.from('pets').update({ role: newRole, is_health_pet: false }).eq('id', petData.id)
-          petData.role = newRole
-        }
+      // Fetch all pets and prioritize the professional one
+      const { data: allPets } = await supabase
+        .from('pets')
+        .select('*')
+        .eq('user_id', session.user.id)
+      
+      let petData = null
+      if (allPets && allPets.length > 0) {
+        // Sort: Professional Social Profiles > Standard Social Profiles > Hidden Profiles
+        const sorted = allPets.sort((a,b) => {
+          const score = (p) => {
+            let s = 0
+            if (!p.is_health_pet) s += 10
+            if (p.role === 'vet') s += 5
+            if (p.role === 'supplier') s += 3
+            return s
+          }
+          return score(b) - score(a)
+        })
+        petData = sorted[0]
       }
-      setPet(petData)
+
+      if (petData) {
+        // PROACTIVE SELF-HEALING:
+        const name = (petData.pet_name || '').toLowerCase()
+        const currentRole = (petData.role || 'user').toLowerCase()
+        if (currentRole === 'user') {
+          let newRole = null
+          if (name.includes('vet') || name.includes('hospital') || name.includes('clinic') || name.includes('doctor')) newRole = 'vet'
+          else if (name.includes('shop') || name.includes('store') || name.includes('supply') || name.includes('pet store')) newRole = 'supplier'
+          if (newRole) {
+            await supabase.from('pets').update({ role: newRole, is_health_pet: false }).eq('id', petData.id)
+            petData.role = newRole
+          }
+        }
+        setPet(petData)
+      }
     }
 
     const savedLocation = localStorage.getItem('pawverse_location')
     if (savedLocation) {
       setUserLocation(JSON.parse(savedLocation))
-    } else {
-      setShowLocationModal(true)
     }
 
     await fetchListings()

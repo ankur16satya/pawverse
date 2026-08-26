@@ -143,7 +143,7 @@ setFriends(friendList)
   }
 
   const handleAddFriend = async () => {
-    if (!user || !profilePet) return
+    if (!user || !profilePet || friendStatus === 'sent' || friendStatus === 'friends') return
     let currentPet = pet
     if (!currentPet) {
       const { data: pD } = await supabase.from('pets').select('*').eq('user_id', user.id).eq('is_health_pet', false).maybeSingle()
@@ -155,7 +155,6 @@ setFriends(friendList)
       }
     }
 
-    
     if (friendStatus === 'received') {
       // Accept the request
       setFriendStatus('friends')
@@ -168,6 +167,18 @@ setFriends(friendList)
           message: `${petName} accepted your friend request! 🎉`,
         })
       }
+      return
+    }
+
+    // Guard duplicate request DB inserts
+    const { data: existing } = await supabase
+      .from('friend_requests')
+      .select('id, status')
+      .or(`and(sender_id.eq.${user.id},receiver_id.eq.${id}),and(sender_id.eq.${id},receiver_id.eq.${user.id})`)
+      .maybeSingle()
+
+    if (existing) {
+      setFriendStatus(existing.status === 'accepted' ? 'friends' : existing.sender_id === user.id ? 'sent' : 'received')
       return
     }
 
@@ -187,10 +198,23 @@ setFriends(friendList)
       body: JSON.stringify({
         user_id: id,
         title: '👫 New Friend Request',
-        body: `${pet.pet_name} wants to be your friend! 🐾`,
+        body: `${currentPet?.pet_name || 'A pet'} wants to be your friend! 🐾`,
         url: '/friends'
       })
     }).catch(e => console.error('Push failed:', e))
+  }
+
+  const handleRemoveFriend = async () => {
+    if (!user || !id) return
+    if (!confirm('Are you sure you want to unfriend this pet?')) return
+
+    await Promise.all([
+      supabase.from('friend_requests').delete().eq('sender_id', user.id).eq('receiver_id', id),
+      supabase.from('friend_requests').delete().eq('sender_id', id).eq('receiver_id', user.id)
+    ])
+
+    setFriendStatus(null)
+    setFriends(prev => prev.filter(f => f.user_id !== user.id))
   }
 
   const timeAgo = (ts) => {
@@ -204,10 +228,10 @@ setFriends(friendList)
   }
 
   const getFriendBtn = () => {
-    if (friendStatus === 'friends') return { label: '✅ Friends', disabled: true, style: { background: '#E8F8E8', color: '#22C55E' } }
-    if (friendStatus === 'sent') return { label: 'Request Sent 🐾', disabled: true, style: { background: '#F3F0FF', color: '#6C4BF6' } }
-    if (friendStatus === 'received') return { label: '✅ Accept Request', disabled: false, style: { background: 'linear-gradient(135deg,#FF6B35,#6C4BF6)', color: '#fff' } }
-    return { label: '+ Add Friend', disabled: false, style: { background: 'linear-gradient(135deg,#FF6B35,#6C4BF6)', color: '#fff' } }
+    if (friendStatus === 'friends') return { label: 'Unfriend ✕', action: handleRemoveFriend, disabled: false, style: { background: '#FFE8E8', color: '#FF4757' } }
+    if (friendStatus === 'sent') return { label: 'Request Sent 🐾', action: null, disabled: true, style: { background: '#F3F0FF', color: '#6C4BF6' } }
+    if (friendStatus === 'received') return { label: '✅ Accept Request', action: handleAddFriend, disabled: false, style: { background: 'linear-gradient(135deg,#FF6B35,#6C4BF6)', color: '#fff' } }
+    return { label: '+ Add Friend', action: handleAddFriend, disabled: false, style: { background: 'linear-gradient(135deg,#FF6B35,#6C4BF6)', color: '#fff' } }
   }
 
   if (loading) return (
@@ -228,7 +252,6 @@ setFriends(friendList)
 
   return (
     <div style={{ background: '#FFFBF7', minHeight: '100vh' }}>
-      {/* Issue 4.4: Per-profile SEO for social sharing */}
       <SEO
         title={`${profilePet?.owner_name || 'Pet Parent'} & ${profilePet?.pet_name || 'Pet'} on PawVerse`}
         description={`Follow ${profilePet?.pet_name || 'this pet'} on PawVerse — India's pet social network. ${profilePet?.pet_type ? `Meet this adorable ${profilePet.pet_type}.` : ''}`}
@@ -293,7 +316,7 @@ setFriends(friendList)
                 </div>
               ))}
               {/* Friend / Chat buttons */}
-              <button onClick={handleAddFriend} disabled={friendBtn.disabled}
+              <button onClick={friendBtn.action} disabled={friendBtn.disabled}
                 style={{ padding: '9px 18px', border: 'none', borderRadius: 10, fontFamily: 'Nunito, sans-serif', fontWeight: 800, fontSize: '0.88rem', cursor: friendBtn.disabled ? 'default' : 'pointer', ...friendBtn.style }}>
                 {friendBtn.label}
               </button>

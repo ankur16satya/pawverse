@@ -106,13 +106,10 @@ export default function NavBar({ user, pet }) {
 
   const fetchUnreadMessages = async () => {
     const { data: convs } = await supabase.from('conversations').select('id').or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`)
-    if (!convs?.length) return
-    let total = 0
-    for (const conv of convs) {
-      const { count } = await supabase.from('messages').select('*', { count: 'exact', head: true }).eq('conversation_id', conv.id).eq('is_read', false).neq('sender_id', user.id)
-      total += count || 0
-    }
-    setUnreadMsgCount(total)
+    if (!convs?.length) { setUnreadMsgCount(0); return }
+    const convIds = convs.map(c => c.id)
+    const { count } = await supabase.from('messages').select('*', { count: 'exact', head: true }).in('conversation_id', convIds).eq('is_read', false).neq('sender_id', user.id)
+    setUnreadMsgCount(count || 0)
   }
 
   const fetchCartCount = async () => {
