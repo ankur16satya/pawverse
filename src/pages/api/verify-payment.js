@@ -1,30 +1,13 @@
 import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
-import nodemailer from 'nodemailer'
+import { sendMail } from '../../lib/mailer'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 )
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER || 'ankur16satya@gmail.com',
-    pass: process.env.EMAIL_PASS || 'uvljcztortknbpwt',
-  }
-})
-
-const sendEmail = async (to, subject, html) => {
-  try {
-    await transporter.sendMail({
-      from: '"PawVerse" <ankur16satya@gmail.com>',
-      to, subject, html
-    })
-  } catch (e) {
-    console.error('Email failed:', e.message)
-  }
-}
+const sendEmail = (to, subject, html) => sendMail({ to, subject, html })
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' })

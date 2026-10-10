@@ -85,7 +85,7 @@ export default function App({ Component, pageProps }) {
                   "name": "PawVerse Social",
                   "url": "https://pawversesocial.com",
                   "logo": "https://pawversesocial.com/logo.png",
-                  "image": "https://pawversesocial.com/og-image.jpg",
+                  "image": "https://pawversesocial.com/og-image.png",
                   "description": "India's pet social platform — adopt pets, shop the marketplace, connect with pet parents in Dehradun and across India.",
                   "address": {
                     "@type": "PostalAddress",

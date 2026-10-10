@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
+import { notifyFriendRequest } from '../lib/notify'
 import NavBar from '../components/NavBar'
 import SEO from '../components/SEO'
 import { uploadToCloudinary } from '../lib/cloudinary'
@@ -802,18 +803,7 @@ export default function Feed() {
     setFriendStatuses(prev=>({...prev,[otherPet.user_id]:'pending'}))
     const { error } = await supabase.from('friend_requests').insert({sender_id:user.id,receiver_id:otherPet.user_id,status:'pending'})
     if (error) { setFriendStatuses(prev=>({...prev,[otherPet.user_id]:null})); return }
-    await supabase.from('notifications').insert({user_id:otherPet.user_id,type:'friend_request',message:`${pet.pet_name} sent you a friend request! 🐾|/friends`})
-    
-    // ── SEND REAL BACKGROUND PUSH ──
-    fetch('/api/push', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_id: otherPet.user_id,
-        title: '👫 New Friend Request',
-        body: `${pet.pet_name} wants to be your friend! 🐾`,
-        url: '/friends'
-      })
-    }).catch(e => console.error('Push failed:', e))
+    notifyFriendRequest(otherPet.user_id)
   }
 
   const getFriendButtonLabel = (userId) => {

@@ -38,6 +38,7 @@ export default function SuperAdmin() {
   const [allPets, setAllPets] = useState([])
   const [listings, setListings] = useState([])
   const [activeTab, setActiveTab] = useState('analytics')
+  const [deletionRequests, setDeletionRequests] = useState([])
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false)
   const [adminPassInput, setAdminPassInput] = useState('')
   const [passError, setPassError] = useState('')
@@ -101,7 +102,11 @@ export default function SuperAdmin() {
     // Fetch Blogs
     const { data: blogData } = await supabase.from('blogs').select('*').order('created_at', { ascending: false })
     setBlogs(blogData || [])
-    
+
+    // Fetch account deletion requests (table from supabase/deletion_requests.sql)
+    const { data: delData } = await supabase.from('deletion_requests').select('*').order('created_at', { ascending: false })
+    setDeletionRequests(delData || [])
+
     setLoading(false)
   }
 
@@ -137,6 +142,15 @@ export default function SuperAdmin() {
        setAppointments(prev => prev.map(a => a.id === id ? { ...a, payment_status: 'verified' } : a))
        alert('✅ Payment marked as Verified!')
     }
+  }
+
+  const updateDeletionRequest = async (id, status) => {
+    const label = status === 'completed' ? 'mark this request as COMPLETED (only after you have deleted the user\'s data)' : 'reject this request'
+    if (!confirm(`Are you sure you want to ${label}?`)) return
+    const patch = { status, completed_at: status === 'completed' ? new Date().toISOString() : null }
+    const { error } = await supabase.from('deletion_requests').update(patch).eq('id', id)
+    if (error) { alert('❌ Failed to update: ' + error.message); return }
+    setDeletionRequests(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r))
   }
 
   const handleBlogSubmit = async (e) => {
@@ -246,6 +260,7 @@ export default function SuperAdmin() {
             { id: 'suppliers', label: '📦 Marketplace', color: '#22C55E' },
             { id: 'blogs', label: '📝 Blogs', color: '#0EA5E9' },
             { id: 'payments', label: '💰 UTR Verify', color: '#FF4757' },
+            { id: 'deletions', label: `🗑️ Deletion Requests${deletionRequests.filter(r => r.status === 'pending').length ? ` (${deletionRequests.filter(r => r.status === 'pending').length})` : ''}`, color: '#1E1347' },
           ].map(t => (
             <button key={t.id} onClick={() => setActiveTab(t.id)} 
               style={{ flex: 1, minWidth: 150, padding: '14px', border: 'none', borderRadius: 12, background: activeTab === t.id ? t.color : '#fff', color: activeTab === t.id ? '#fff' : '#6B7280', fontFamily: 'Nunito, sans-serif', fontWeight: 800, fontSize: '0.9rem', cursor: 'pointer', boxShadow: '0 4px 15px rgba(0,0,0,0.05)', transition: 'all 0.2s' }}>
@@ -419,6 +434,68 @@ export default function SuperAdmin() {
                    ))}
                 </tbody>
              </table>
+          </div>
+        )}
+
+        {/* 🗑️ Deletion Requests View */}
+        {activeTab === 'deletions' && (
+          <div className="card" style={{ padding: 20, overflowX: 'auto' }}>
+            <p style={{ fontSize: '0.82rem', color: '#6B7280', marginTop: 0 }}>
+              Requests from <strong>/delete-account</strong>. Complete within 30 days. For unverified requests, confirm ownership by emailing the requester before deleting anything.
+            </p>
+            {deletionRequests.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 30, color: '#9CA3AF', fontWeight: 700 }}>No deletion requests yet.</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: 760 }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #EDE8FF', color: '#9CA3AF', fontSize: '0.8rem' }}>
+                    <th style={{ padding: '12px 0' }}>DATE</th>
+                    <th>REQUESTER</th>
+                    <th>TYPE</th>
+                    <th>REASON / DETAILS</th>
+                    <th>STATUS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deletionRequests.map(r => (
+                    <tr key={r.id} style={{ borderBottom: '1px solid #EDE8FF', fontSize: '0.85rem', color: '#1E1347', verticalAlign: 'top' }}>
+                      <td style={{ padding: '14px 8px 14px 0', fontWeight: 700, whiteSpace: 'nowrap' }}>{new Date(r.created_at).toLocaleDateString()}</td>
+                      <td style={{ padding: '14px 8px 14px 0' }}>
+                        <div style={{ fontWeight: 800 }}>{r.name || '—'}</div>
+                        <a href={`mailto:${r.email}`} style={{ color: '#6C4BF6', fontWeight: 700 }}>{r.email}</a>
+                        <div style={{ fontSize: '0.72rem', marginTop: 4, color: r.verified ? '#22C55E' : '#FF6B35', fontWeight: 800 }}>
+                          {r.verified ? '✅ Verified (signed in)' : '⚠️ Unverified'}
+                        </div>
+                        {r.user_id && <div style={{ fontSize: '0.68rem', color: '#9CA3AF', fontFamily: 'monospace' }}>{r.user_id}</div>}
+                      </td>
+                      <td style={{ padding: '14px 8px 14px 0', fontWeight: 700 }}>{r.request_type === 'full_account' ? 'Full account' : 'Specific data'}</td>
+                      <td style={{ padding: '14px 8px 14px 0', maxWidth: 280 }}>
+                        <div style={{ fontWeight: 700 }}>{r.reason || '—'}</div>
+                        {r.details && <div style={{ color: '#6B7280', whiteSpace: 'pre-wrap', fontSize: '0.8rem' }}>{r.details}</div>}
+                      </td>
+                      <td style={{ padding: '14px 0' }}>
+                        {r.status === 'pending' ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <button onClick={() => updateDeletionRequest(r.id, 'completed')}
+                              style={{ padding: '6px 12px', background: '#22C55E', color: '#fff', border: 'none', borderRadius: 20, fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer' }}>
+                              ✅ Mark Completed
+                            </button>
+                            <button onClick={() => updateDeletionRequest(r.id, 'rejected')}
+                              style={{ padding: '6px 12px', background: '#fff', color: '#FF4757', border: '1.5px solid #FF4757', borderRadius: 20, fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer' }}>
+                              Reject
+                            </button>
+                          </div>
+                        ) : (
+                          <span style={{ padding: '4px 10px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 800, background: r.status === 'completed' ? '#E8F8E8' : '#FFDCE0', color: r.status === 'completed' ? '#22C55E' : '#FF4757' }}>
+                            {r.status === 'completed' ? '✅ Completed' : '❌ Rejected'}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
 

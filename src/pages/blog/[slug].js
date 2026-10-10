@@ -58,7 +58,7 @@ export default function BlogPost({ blog: initialBlog }) {
     "@type": "Article",
     "headline": blog.title,
     "description": blog.excerpt || blog.title,
-    "image": blog.image_url || 'https://pawversesocial.com/og-image.jpg',
+    "image": blog.image_url || 'https://pawversesocial.com/og-image.png',
     "author": {
       "@type": "Organization",
       "name": displayAuthor

@@ -314,6 +314,15 @@ export default function Home({ initialPosts, totalPets, totalPosts, year }) {
             </ul>
           </div>
           <div>
+            <h4 style={{ fontWeight: 800, marginBottom: 12, fontSize: '0.95rem' }}>Legal</h4>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <li><Link href="/privacy-policy" style={footerLinkStyle}>Privacy Policy</Link></li>
+              <li><Link href="/terms-and-conditions" style={footerLinkStyle}>Terms &amp; Conditions</Link></li>
+              <li><Link href="/refund-policy" style={footerLinkStyle}>Refund Policy</Link></li>
+              <li><Link href="/delete-account" style={footerLinkStyle}>Delete Account</Link></li>
+            </ul>
+          </div>
+          <div>
             <h4 style={{ fontWeight: 800, marginBottom: 12, fontSize: '0.95rem' }}>Contact</h4>
             <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8, color: '#A8A4C7', fontSize: '0.88rem' }}>
               <li>📧 support@pawversesocial.com</li>

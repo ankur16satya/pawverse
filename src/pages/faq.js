@@ -46,7 +46,7 @@ const FAQS = [
   },
   {
     q: "How do I delete my PawVerse account?",
-    a: "To delete your account, go to Settings and select the account deletion option, or contact our support team at support@pawversesocial.com."
+    a: "Visit pawversesocial.com/delete-account and submit a deletion request with your registered email — you don't need to be signed in. Verified requests are completed within 30 days. You can also email support@pawversesocial.com."
   },
   {
     q: "Who can I contact for support?",

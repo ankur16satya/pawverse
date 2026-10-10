@@ -12,6 +12,10 @@ const STATIC_PAGES = [
   { path: '/reels', changefreq: 'hourly', priority: '0.7' },
   { path: '/dehradun', changefreq: 'weekly', priority: '0.8' },
   { path: '/faq', changefreq: 'monthly', priority: '0.7' },
+  { path: '/privacy-policy', changefreq: 'yearly', priority: '0.3' },
+  { path: '/terms-and-conditions', changefreq: 'yearly', priority: '0.3' },
+  { path: '/refund-policy', changefreq: 'yearly', priority: '0.3' },
+  { path: '/delete-account', changefreq: 'yearly', priority: '0.3' },
 ]
 
 function buildXml(urls) {

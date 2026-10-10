@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
 import SEO from '../components/SEO'
 import { uploadToCloudinary } from '../lib/cloudinary'
+import { notifyNewAdoption } from '../lib/notify'
 
 export default function Adopt() {
   const router = useRouter()
@@ -65,6 +66,14 @@ export default function Adopt() {
       }
     } catch (e) { console.error('Error fetching listings:', e) }
   }
+
+  // Opened from an adoption notification: /adopt?listing=<id>
+  useEffect(() => {
+    const listingId = router.query.listing
+    if (!listingId || !petsList.length) return
+    const match = petsList.find(p => String(p.id) === String(listingId))
+    if (match) setSelected(match)
+  }, [router.query.listing, petsList])
 
   const types = ['All','Dogs','Cats','Rabbits','Birds','Small Pets']
   const inputTypes = ['Dogs','Cats','Rabbits','Birds','Small Pets', 'Other']
@@ -200,6 +209,9 @@ export default function Adopt() {
       const { data, error } = await supabase.from('adoption_listings').insert(insertData).select().single()
       
       if (error) throw error;
+
+      // Let every PawVerse user know a pet needs a home (in-app + push)
+      notifyNewAdoption(data.id)
 
       await fetchListings();
 

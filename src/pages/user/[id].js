@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
+import { notifyFriendRequest } from '../../lib/notify'
 import NavBar from '../../components/NavBar'
 import SEO from '../../components/SEO'
 
@@ -183,25 +184,11 @@ setFriends(friendList)
     }
 
     setFriendStatus('sent')
-    await supabase.from('friend_requests').insert({
+    const { error: reqErr } = await supabase.from('friend_requests').insert({
       sender_id: user.id, receiver_id: id, status: 'pending'
     })
-    const petName = currentPet?.pet_name || 'A pet'
-    await supabase.from('notifications').insert({
-      user_id: id, type: 'friend_request',
-      message: `${petName} sent you a friend request! 🐾|/friends`,
-    })
-
-    // ── SEND REAL BACKGROUND PUSH ──
-    fetch('/api/push', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_id: id,
-        title: '👫 New Friend Request',
-        body: `${currentPet?.pet_name || 'A pet'} wants to be your friend! 🐾`,
-        url: '/friends'
-      })
-    }).catch(e => console.error('Push failed:', e))
+    if (reqErr) { setFriendStatus(null); return }
+    notifyFriendRequest(id)
   }
 
   const handleRemoveFriend = async () => {

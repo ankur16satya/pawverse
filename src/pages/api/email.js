@@ -1,39 +1,32 @@
 // File: src/pages/api/email.js
-import nodemailer from 'nodemailer';
+import { transporter, mailFrom } from '../../lib/mailer';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
 
   const { trigger, adminEmail, doctorEmail, clientEmail, appointmentDetails } = req.body;
   
-  // Set up Nodemailer Transporter
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: 'ankur16satya@gmail.com', // ⚠️ REPLACE THIS
-      pass: 'uvljcztortknbpwt'     // ⚠️ REPLACE THIS (Get this from Google Account -> Security -> 2-Step Verification -> App Passwords)
-    }
-  });
+  if (!transporter) return res.status(500).json({ error: 'Email is not configured (EMAIL_USER / EMAIL_PASS)' });
 
   try {
     if (trigger === 'NEW_BOOKING') {
       // 1. Email to Client
       await transporter.sendMail({
-        from: '"Pawverse" <ankur16satya@gmail.com>', // ⚠️ Replace email here too
+        from: mailFrom('Pawverse'),
         to: clientEmail,
         subject: 'Appointment Requested 🐾',
         text: `We have received your appointment request with Dr. ${appointmentDetails.doctorName} for ${appointmentDetails.date} at ${appointmentDetails.time}.\nThe doctor will review and approve it shortly! We will notify you.`
       });
       // 2. Email to Doctor
       await transporter.sendMail({
-        from: '"Pawverse Admin" <ankur16satya@gmail.com>', // ⚠️ Replace
+        from: mailFrom('Pawverse Admin'),
         to: doctorEmail,
         subject: 'New Appointment Request! 🩺',
         text: `You have a new booking request from ${appointmentDetails.clientName} for ${appointmentDetails.date} at ${appointmentDetails.time}.\nPlease log into your Pawverse Admin panel to Accept or Reject.`
       });
       // 3. Email to Admin
       await transporter.sendMail({
-        from: '"Pawverse Alerts" <ankur16satya@gmail.com>', // ⚠️ Replace
+        from: mailFrom('Pawverse Alerts'),
         to: adminEmail,
         subject: 'SYSTEM: New Booking Created',
         text: `A new booking was just created!\nDoctor: Dr. ${appointmentDetails.doctorName}\nClient: ${appointmentDetails.clientName}\nDate: ${appointmentDetails.date} at ${appointmentDetails.time}`
@@ -44,13 +37,13 @@ export default async function handler(req, res) {
        // Send Payment link to client
        const paymentLink = `https://pawverse-gray.vercel.app/pay/${appointmentDetails.appointmentId}`;
        await transporter.sendMail({
-        from: '"Pawverse" <ankur16satya@gmail.com>', // ⚠️ Replace
+        from: mailFrom('Pawverse'),
         to: clientEmail,
         subject: 'Appointment Approved! Action Required 💳',
         text: `Good news! Your appointment with Dr. ${appointmentDetails.doctorName} for ${appointmentDetails.date} has been APPROVED.\n\nPlease complete your consultation fee payment of ₹${appointmentDetails.fees} here:\n${paymentLink}`
       });
       await transporter.sendMail({
-        from: '"Pawverse Alerts" <ankur16satya@gmail.com>', // ⚠️ Replace
+        from: mailFrom('Pawverse Alerts'),
         to: adminEmail,
         subject: 'SYSTEM: Booking Approved',
         text: `Dr. ${appointmentDetails.doctorName} approved booking ${appointmentDetails.appointmentId}. Payment link was sent to client.`
@@ -59,13 +52,13 @@ export default async function handler(req, res) {
 
     else if (trigger === 'REJECTED') {
        await transporter.sendMail({
-        from: '"Pawverse" <ankur16satya@gmail.com>', // ⚠️ Replace
+        from: mailFrom('Pawverse'),
         to: clientEmail,
         subject: 'Appointment Update 🐾',
         text: `We're sorry, but Dr. ${appointmentDetails.doctorName} is busy during your requested slot on ${appointmentDetails.date} at ${appointmentDetails.time}.\nPlease log back to Pawverse and select another date or time!`
       });
       await transporter.sendMail({
-        from: '"Pawverse Alerts" <ankur16satya@gmail.com>', // ⚠️ Replace
+        from: mailFrom('Pawverse Alerts'),
         to: adminEmail,
         subject: 'SYSTEM: Booking Rejected',
         text: `Dr. ${appointmentDetails.doctorName} rejected booking ${appointmentDetails.appointmentId} for client ${appointmentDetails.clientName}.`
@@ -74,7 +67,7 @@ export default async function handler(req, res) {
 
     else if (trigger === 'PAYMENT_DONE') {
       await transporter.sendMail({
-        from: '"Pawverse Alerts" <ankur16satya@gmail.com>', // ⚠️ Replace
+        from: mailFrom('Pawverse Alerts'),
         to: adminEmail,
         subject: '🚨 PAYMENT RECEIVED (Action Required)',
         text: `Client ${appointmentDetails.clientName} claims to have paid ₹${appointmentDetails.fees} for Booking ID: ${appointmentDetails.appointmentId}.\n\nUTR NUMBER PROVIDED: ${appointmentDetails.utr}\n\nPlease check your bank/UPI app to verify this immediately!`
@@ -86,7 +79,7 @@ export default async function handler(req, res) {
       const { vetName, vetEmail } = req.body;
       if (vetEmail) {
         await transporter.sendMail({
-          from: '"Pawverse" <ankur16satya@gmail.com>',
+          from: mailFrom('Pawverse'),
           to: vetEmail,
           subject: '🎉 Your PawVerse Vet Account is Active!',
           text:

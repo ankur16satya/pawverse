@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
+import { notifyFriendRequest } from '../lib/notify'
 import { subscribeUserToPush } from '../lib/push'
 import {
   Home,
@@ -261,22 +262,7 @@ export default function NavBar({ user, pet }) {
       return
     }
     
-    await supabase.from('notifications').insert({
-      user_id: targetUserId,
-      type: 'friend_request',
-      message: `${pet.pet_name} sent you a friend request! 🐾|/friends`,
-    })
-    
-    // Send push
-    fetch('/api/push', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_id: targetUserId,
-        title: '👫 New Friend Request',
-        body: `${pet.pet_name} wants to be your friend! 🐾`,
-        url: '/friends'
-      })
-    }).catch(e => console.error('Push failed:', e))
+    notifyFriendRequest(targetUserId)
   }
 
   const getFriendBtnLabel = (userId) => {
@@ -306,7 +292,7 @@ export default function NavBar({ user, pet }) {
     return `${Math.floor(h / 24)}d ago`
   }
 
-  const notifIcon = (type) => ({ like:'❤️', comment:'💬', follow:'🐾', friend_request:'👫', friend_accepted:'✅', message:'💬', post:'📸' }[type] || '🔔')
+  const notifIcon = (type) => ({ like:'❤️', comment:'💬', follow:'🐾', friend_request:'👫', friend_accepted:'✅', message:'💬', post:'📸', adoption:'🏠' }[type] || '🔔')
 
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/') }
 

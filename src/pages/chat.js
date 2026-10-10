@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, Fragment } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
@@ -573,7 +573,23 @@ export default function Chat() {
     if (pressTimer.current) clearTimeout(pressTimer.current)
   }
 
-  const formatTime = (ts) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  // e.g. "10 Oct 2026, 03:45 pm"
+  const formatTime = (ts) => {
+    const d = new Date(ts)
+    const date = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+    const time = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+    return `${date}, ${time}`
+  }
+
+  // Day divider label: "Today", "Yesterday" or "Mon, 6 Oct 2026"
+  const dayLabel = (ts) => {
+    const d = new Date(ts)
+    const today = new Date()
+    const yesterday = new Date(); yesterday.setDate(today.getDate() - 1)
+    if (d.toDateString() === today.toDateString()) return 'Today'
+    if (d.toDateString() === yesterday.toDateString()) return 'Yesterday'
+    return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+  }
 
   const timeAgo = (ts) => {
     const diff = Date.now() - new Date(ts)
@@ -845,10 +861,18 @@ export default function Chat() {
                   const isMe = msg.sender_id === user.id
                   const prevMsg = messages[idx - 1]
                   const showAvatar = !isMe && (!prevMsg || prevMsg.sender_id !== msg.sender_id)
-                  const isLastFromSender = !messages[idx + 1] || messages[idx + 1].sender_id !== msg.sender_id
+                  const showDayDivider = !prevMsg || new Date(prevMsg.created_at).toDateString() !== new Date(msg.created_at).toDateString()
 
                   return (
-                    <div key={msg.id}
+                    <Fragment key={msg.id}>
+                    {showDayDivider && (
+                      <div style={{ display: 'flex', justifyContent: 'center', margin: '14px 0 10px' }}>
+                        <span style={{ background: '#fff', color: '#000', fontWeight: 800, fontSize: '0.72rem', padding: '4px 12px', borderRadius: 20, border: '1px solid #EDE8FF', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+                          {dayLabel(msg.created_at)}
+                        </span>
+                      </div>
+                    )}
+                    <div
                       onTouchStart={(e) => handlePointerDown(e, msg)}
                       onTouchEnd={handlePointerUp}
                       onTouchMove={handlePointerUp}
@@ -959,22 +983,21 @@ export default function Chat() {
                             </div>
                           )
                         })()}
-                        {isLastFromSender && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3 }}>
-                            <span style={{ fontSize: '0.65rem', color: '#9CA3AF' }}>{formatTime(msg.created_at)}</span>
-                            {isMe && (
-                              <span style={{
-                                fontSize: '0.72rem',
-                                color: msg.is_read ? '#6C4BF6' : '#9CA3AF',
-                                fontWeight: 700
-                              }}>
-                                {msg.is_read ? '✓✓' : '✓'}
-                              </span>
-                            )}
-                          </div>
-                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3, marginBottom: 4 }}>
+                          <span style={{ fontSize: '0.68rem', color: '#000', fontWeight: 800 }}>{formatTime(msg.created_at)}</span>
+                          {isMe && (
+                            <span style={{
+                              fontSize: '0.72rem',
+                              color: msg.is_read ? '#6C4BF6' : '#9CA3AF',
+                              fontWeight: 700
+                            }}>
+                              {msg.is_read ? '✓✓' : '✓'}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
+                    </Fragment>
                   )
                 })}
                 <div ref={messagesEndRef} />

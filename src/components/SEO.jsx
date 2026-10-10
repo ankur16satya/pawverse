@@ -2,7 +2,7 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 
 const SITE_URL = 'https://pawversesocial.com'
-const DEFAULT_OG_IMAGE = `${SITE_URL}/og-image.jpg`
+const DEFAULT_OG_IMAGE = `${SITE_URL}/og-image.png`
 
 const DEFAULT_SEO = {
   title: "PawVerse — India's Pet Social Network | Adopt, Shop & Connect",
@@ -42,48 +42,51 @@ export default function SEO({
     <Head>
       {/* Primary Meta Tags */}
       <title>{seoTitle}</title>
-      <meta name="title" content={seoTitle} />
-      <meta name="description" content={seoDescription} />
-      <meta name="keywords" content={seoKeywords} />
-      <meta name="robots" content={robotsContent} />
-      <meta name="author" content={author || 'PawVerse Social'} />
-      <link rel="canonical" href={seoCanonical} />
-      <meta name="google-site-verification" content="53Zgy0JFDm-WXa0dbyKUuovurmvp9Id-zsPLW84ueio" />
+      <meta key="title" name="title" content={seoTitle} />
+      <meta key="description" name="description" content={seoDescription} />
+      <meta key="keywords" name="keywords" content={seoKeywords} />
+      <meta key="robots" name="robots" content={robotsContent} />
+      <meta key="author" name="author" content={author || 'PawVerse Social'} />
+      <link key="canonical" rel="canonical" href={seoCanonical} />
+      <meta key="google-site-verification" name="google-site-verification" content="53Zgy0JFDm-WXa0dbyKUuovurmvp9Id-zsPLW84ueio" />
 
       {/* Language & Locale */}
-      <meta httpEquiv="content-language" content="en-IN" />
-      <meta name="geo.region" content="IN-UT" />
-      <meta name="geo.placename" content="Dehradun" />
+      <meta key="content-language" httpEquiv="content-language" content="en-IN" />
+      <meta key="geo.region" name="geo.region" content="IN-UT" />
+      <meta key="geo.placename" name="geo.placename" content="Dehradun" />
 
       {/* Open Graph / Facebook */}
-      <meta property="og:type" content={seoType} />
-      <meta property="og:url" content={seoCanonical} />
-      <meta property="og:title" content={seoTitle} />
-      <meta property="og:description" content={seoDescription} />
-      <meta property="og:image" content={seoImage} />
-      <meta property="og:image:width" content="1200" />
-      <meta property="og:image:height" content="630" />
-      <meta property="og:image:alt" content={seoTitle} />
-      <meta property="og:site_name" content="PawVerse Social" />
-      <meta property="og:locale" content="en_IN" />
-      {article && publishedTime && <meta property="article:published_time" content={publishedTime} />}
-      {article && modifiedTime && <meta property="article:modified_time" content={modifiedTime} />}
-      {article && author && <meta property="article:author" content={author} />}
+      <meta key="og:type" property="og:type" content={seoType} />
+      <meta key="og:url" property="og:url" content={seoCanonical} />
+      <meta key="og:title" property="og:title" content={seoTitle} />
+      <meta key="og:description" property="og:description" content={seoDescription} />
+      <meta key="og:image" property="og:image" content={seoImage} />
+      <meta key="og:image:secure_url" property="og:image:secure_url" content={seoImage} />
+      {/* Dimensions are only known for our own default share image */}
+      {seoImage === DEFAULT_OG_IMAGE && <meta key="og:image:type" property="og:image:type" content="image/png" />}
+      {seoImage === DEFAULT_OG_IMAGE && <meta key="og:image:width" property="og:image:width" content="1200" />}
+      {seoImage === DEFAULT_OG_IMAGE && <meta key="og:image:height" property="og:image:height" content="630" />}
+      <meta key="og:image:alt" property="og:image:alt" content={seoTitle} />
+      <meta key="og:site_name" property="og:site_name" content="PawVerse Social" />
+      <meta key="og:locale" property="og:locale" content="en_IN" />
+      {article && publishedTime && <meta key="article:published_time" property="article:published_time" content={publishedTime} />}
+      {article && modifiedTime && <meta key="article:modified_time" property="article:modified_time" content={modifiedTime} />}
+      {article && author && <meta key="article:author" property="article:author" content={author} />}
 
       {/* Twitter Card */}
-      <meta name="twitter:card" content="summary_large_image" />
-      <meta name="twitter:site" content={DEFAULT_SEO.twitterHandle} />
-      <meta name="twitter:creator" content={DEFAULT_SEO.twitterHandle} />
-      <meta name="twitter:url" content={seoCanonical} />
-      <meta name="twitter:title" content={seoTitle} />
-      <meta name="twitter:description" content={seoDescription} />
-      <meta name="twitter:image" content={seoImage} />
-      <meta name="twitter:image:alt" content={seoTitle} />
+      <meta key="twitter:card" name="twitter:card" content="summary_large_image" />
+      <meta key="twitter:site" name="twitter:site" content={DEFAULT_SEO.twitterHandle} />
+      <meta key="twitter:creator" name="twitter:creator" content={DEFAULT_SEO.twitterHandle} />
+      <meta key="twitter:url" name="twitter:url" content={seoCanonical} />
+      <meta key="twitter:title" name="twitter:title" content={seoTitle} />
+      <meta key="twitter:description" name="twitter:description" content={seoDescription} />
+      <meta key="twitter:image" name="twitter:image" content={seoImage} />
+      <meta key="twitter:image:alt" name="twitter:image:alt" content={seoTitle} />
       
       {/* Favicon & Theme */}
-      <link rel="icon" href="/logo.png" />
-      <link rel="apple-touch-icon" href="/logo.png" />
-      <meta name="theme-color" content="#FF6B35" />
+      <link key="icon" rel="icon" href="/logo.png" />
+      <link key="apple-touch-icon" rel="apple-touch-icon" href="/logo.png" />
+      <meta key="theme-color" name="theme-color" content="#FF6B35" />
     </Head>
   )
 }

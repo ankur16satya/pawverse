@@ -181,8 +181,42 @@ export default function PostPage({ initialPost }) {
     return `${Math.floor(h / 24)}d ago`
   }
 
+  // OG tags must render during SSR (while loading) so WhatsApp/Facebook crawlers see the post image.
+  const ogTags = (() => {
+    const ogPost = post || initialPost
+    if (!ogPost) return null
+    const petName = ogPost.pets?.pet_name || 'A Pet'
+    const text = ogPost.content || ogPost.caption || ''
+    const ogTitle = `${petName} on PawVerse 🐾`
+    const ogDesc = text ? text.slice(0, 155) : `See ${petName}'s post on PawVerse — India's pet social network.`
+    
+    // Image priority: post image → reel video thumbnail frame → pet avatar → default site OG image
+    let ogImage = ogPost.image_url
+    if (!ogImage && ogPost.video_url) {
+      ogImage = ogPost.video_url.replace(/\.(mp4|mov|webm|m4v)(\?.*)?$/i, '.jpg')
+    }
+    if (!ogImage) {
+      ogImage = ogPost.pets?.avatar_url
+    }
+    if (!ogImage) {
+      ogImage = 'https://pawversesocial.com/og-image.png'
+    } else if (ogImage.startsWith('/')) {
+      ogImage = `https://pawversesocial.com${ogImage}`
+    }
+
+    return (
+      <SEO
+        title={ogTitle}
+        description={ogDesc}
+        ogImage={ogImage}
+        ogType={ogPost.is_reel ? 'video.other' : 'article'}
+        canonical={`https://pawversesocial.com/post/${ogPost.id}`}
+      />
+    )
+  })()
+
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontSize: '2.5rem', background: 'linear-gradient(135deg, #FFF0E8, #F0EBFF)' }}>🐾</div>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontSize: '2.5rem', background: 'linear-gradient(135deg, #FFF0E8, #F0EBFF)' }}>{ogTags}🐾</div>
   )
 
   if (notFound) return (
@@ -199,39 +233,7 @@ export default function PostPage({ initialPost }) {
 
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, rgba(213,134,200,1), rgba(105,201,249,1))', paddingTop: 110 }}>
-      {/* ── Dynamic OG tags — use initialPost (SSR) so bots see real image immediately ── */}
-      {(() => {
-        const ogPost = post || initialPost
-        if (!ogPost) return null
-        const petName = ogPost.pets?.pet_name || 'A Pet'
-        const text = ogPost.content || ogPost.caption || ''
-        const ogTitle = `${petName} on PawVerse 🐾`
-        const ogDesc = text ? text.slice(0, 155) : `See ${petName}'s post on PawVerse — India's pet social network.`
-        
-        // Image priority: post image → reel video thumbnail frame → pet avatar → default site OG image
-        let ogImage = ogPost.image_url
-        if (!ogImage && ogPost.video_url) {
-          ogImage = ogPost.video_url.replace(/\.(mp4|mov|webm|m4v)(\?.*)?$/i, '.jpg')
-        }
-        if (!ogImage) {
-          ogImage = ogPost.pets?.avatar_url
-        }
-        if (!ogImage) {
-          ogImage = 'https://pawversesocial.com/og-image.jpg'
-        } else if (ogImage.startsWith('/')) {
-          ogImage = `https://pawversesocial.com${ogImage}`
-        }
-
-        return (
-          <SEO
-            title={ogTitle}
-            description={ogDesc}
-            ogImage={ogImage}
-            ogType={ogPost.is_reel ? 'video.other' : 'article'}
-            canonical={`https://pawversesocial.com/post/${ogPost.id}`}
-          />
-        )
-      })()}
+      {ogTags}
       {user && <NavBar user={user} pet={pet} />}
 
       {/* If not logged in, show a top banner */}

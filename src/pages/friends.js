@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabase'
+import { notifyFriendRequest } from '../lib/notify'
 import NavBar from '../components/NavBar'
 
 export default function Friends() {
@@ -243,11 +244,7 @@ export default function Friends() {
       return
     }
 
-    await supabase.from('notifications').insert({
-      user_id: suggPet.user_id,
-      type: 'friend_request',
-      message: `${pet.pet_name} sent you a friend request! 🐾`,
-    })
+    notifyFriendRequest(suggPet.user_id)
 
     // Add to sent requests list
     setSentRequests(prev => [...prev, { ...newReq, receiverPet: suggPet }])

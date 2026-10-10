@@ -36,6 +36,13 @@ export default function Home() {
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [signupStep, setSignupStep] = useState('form') // form → otp
+  const [signupOtp, setSignupOtp] = useState('')
+  const [resetStep, setResetStep] = useState('email') // email → otp
+  const [resetOtp, setResetOtp] = useState('')
+  const [verifyOtpSent, setVerifyOtpSent] = useState(false)
+  const [verifyCode, setVerifyCode] = useState('')
+  const [otpCooldown, setOtpCooldown] = useState(0)
 
   useEffect(() => {
     const hash = window.location.hash
@@ -70,21 +77,58 @@ export default function Home() {
     return () => subscription.unsubscribe()
   }, [])
 
+  // Calls one of our /api/auth/* routes (OTP emails go through our own SMTP, not Supabase's limited mailer)
+  const callAuthApi = async (path, body) => {
+    const res = await fetch(`/api/auth/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(json.error || 'Something went wrong. Please try again.')
+    return json
+  }
+
+  const sendOtp = async (targetEmail, purpose) => {
+    await callAuthApi('send-otp', { email: targetEmail, purpose })
+    setOtpCooldown(60)
+  }
+
+  useEffect(() => {
+    if (otpCooldown <= 0) return
+    const t = setTimeout(() => setOtpCooldown(c => c - 1), 1000)
+    return () => clearTimeout(t)
+  }, [otpCooldown])
+
   const handleSignup = async (e) => {
     e.preventDefault()
-    setError(''); setLoading(true)
+    setError(''); setSuccess('')
+    const cleanEmail = email.trim().toLowerCase()
+
+    // Step 1: validate the form and email a verification code
+    if (signupStep === 'form') {
+      if (password.length < 6) { setError('Password must be at least 6 characters.'); return }
+      setLoading(true)
+      try {
+        await sendOtp(cleanEmail, 'signup')
+        setSignupOtp('')
+        setSignupStep('otp')
+        setSuccess(`📧 We sent a 6-digit code to ${cleanEmail}`)
+      } catch (err) {
+        setError(err.message)
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
+
+    // Step 2: verify the code and create the account
+    setLoading(true)
     try {
-      const { data, error: authErr } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { emailRedirectTo: null }
-      })
-      if (authErr) throw authErr
-
-      const userId = data?.user?.id
-      if (!userId) throw new Error('Signup failed — please try again.')
-
       const emoji = PET_EMOJIS[petType] || '🐾'
+      await callAuthApi('signup', {
+        email: cleanEmail,
+        password,
+        otp: signupOtp,
+        profile: { ownerName, role, petName, petType, petBreed, emoji },
+      })
+
       localStorage.setItem('pending_pet', JSON.stringify({
         owner_name: ownerName,
         pet_name: petName,
@@ -93,26 +137,7 @@ export default function Home() {
         emoji,
       }))
 
-      await supabase.from('pets').insert({
-        user_id: userId,
-        owner_name: ownerName,
-        role: role, // parent | lover | vet | supplier
-        pet_name: role === 'lover' ? (ownerName || 'Pet Lover') : petName,
-        pet_type: role === 'lover' ? '🐾 Pet Lover' : petType,
-        pet_breed: petBreed,
-        emoji,
-        paw_coins: role === 'parent' || role === 'lover' ? 150 : 0,
-        bio: role === 'lover' ? `Hi, I love pets! 🐾` : `Hi, I'm ${petName}! 🐾`,
-        location: 'India',
-        is_health_pet: false,
-        // Vet accounts start as unverified. They self-verify by:
-        //   1) confirming email (Supabase handles this automatically)
-        //   2) uploading their vet license at /doctor/admin
-        // No admin involvement required — auto-promoted when both are done.
-        vet_verified: role === 'vet' ? false : null,
-      })
-
-      const { error: loginErr } = await supabase.auth.signInWithPassword({ email, password })
+      const { error: loginErr } = await supabase.auth.signInWithPassword({ email: cleanEmail, password })
       if (loginErr) {
         setSuccess('🎉 Account created! You can now sign in.')
         setMode('login')
@@ -143,13 +168,24 @@ export default function Home() {
 
   const handleForgotPassword = async (e) => {
     e.preventDefault()
-    setError(''); setLoading(true)
+    setError(''); setSuccess('')
+    const cleanEmail = resetEmail.trim().toLowerCase()
+    setLoading(true)
     try {
-      const { error: err } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-        redirectTo: `https://pawversesocial.com/?mode=reset_password`
-      })
-      if (err) throw err
-      setSuccess('📧 Password reset email sent! Check your inbox and click the link.')
+      if (resetStep === 'email') {
+        await sendOtp(cleanEmail, 'reset')
+        setResetOtp('')
+        setResetStep('otp')
+        setSuccess(`📧 If an account exists for ${cleanEmail}, we've sent it a 6-digit code.`)
+        return
+      }
+      if (newPassword !== confirmPassword) throw new Error('Passwords do not match!')
+      if (newPassword.length < 6) throw new Error('Password must be at least 6 characters.')
+      await callAuthApi('reset-password', { email: cleanEmail, otp: resetOtp, newPassword })
+      setSuccess('✅ Password updated! You can now sign in with your new password.')
+      setLoginEmail(cleanEmail)
+      setNewPassword(''); setConfirmPassword(''); setResetOtp(''); setResetStep('email')
+      setMode('login')
     } catch (err) {
       setError(err.message)
     } finally {
@@ -180,13 +216,28 @@ export default function Home() {
     if (!unconfirmedEmail) return
     setResendLoading(true)
     try {
-      const { error } = await supabase.auth.resend({ type: 'signup', email: unconfirmedEmail })
-      if (error) throw error
-      setSuccess('📧 Confirmation email resent! Please check your inbox (and spam folder).')
+      await sendOtp(unconfirmedEmail, 'verify')
+      setVerifyOtpSent(true)
+      setVerifyCode('')
+      setSuccess(`📧 We sent a 6-digit code to ${unconfirmedEmail}`)
       setError('')
-      setUnconfirmedEmail('')
     } catch (err) {
-      setError('Could not resend email: ' + err.message)
+      setError('Could not send code: ' + err.message)
+    } finally {
+      setResendLoading(false)
+    }
+  }
+
+  // Confirms an older, never-verified account with the emailed code, then signs in.
+  const handleVerifyExistingEmail = async () => {
+    setError(''); setResendLoading(true)
+    try {
+      await callAuthApi('verify-email', { email: unconfirmedEmail, otp: verifyCode })
+      const { error: loginErr } = await supabase.auth.signInWithPassword({ email: unconfirmedEmail, password: loginPassword })
+      if (loginErr) throw loginErr
+      router.push(router.query.next || '/')
+    } catch (err) {
+      setError(err.message)
     } finally {
       setResendLoading(false)
     }
@@ -194,7 +245,7 @@ export default function Home() {
 
   const handleLogin = async (e) => {
     e.preventDefault()
-    setError(''); setUnconfirmedEmail(''); setLoading(true)
+    setError(''); setUnconfirmedEmail(''); setVerifyOtpSent(false); setLoading(true)
     try {
       const { data, error: authErr } = await supabase.auth.signInWithPassword({
         email: loginEmail.trim().toLowerCase(),
@@ -209,7 +260,7 @@ export default function Home() {
           msg.toLowerCase().includes('not confirmed')
         ) {
           setUnconfirmedEmail(loginEmail.trim().toLowerCase())
-          setError('Your email is not confirmed yet. Check your inbox for a confirmation link, or resend it below.')
+          setError('Your email is not confirmed yet. Verify it with a one-time code below.')
           setLoading(false)
           return
         }
@@ -280,6 +331,16 @@ export default function Home() {
             {error && <div style={{ background: '#FFDCE0', color: '#FF4757', padding: '8px 12px', borderRadius: 8, fontSize: '0.82rem', marginBottom: 8 }}>{error}</div>}
             {success && <div style={{ background: '#E8F8E8', color: '#22C55E', padding: '8px 12px', borderRadius: 8, fontSize: '0.82rem', marginBottom: 8 }}>{success}</div>}
             <form onSubmit={handleSignup}>
+              {signupStep === 'otp' ? (
+                <OtpField
+                  email={email.trim().toLowerCase()}
+                  value={signupOtp}
+                  onChange={setSignupOtp}
+                  cooldown={otpCooldown}
+                  onResend={async () => { setError(''); try { await sendOtp(email.trim().toLowerCase(), 'signup'); setSuccess('📧 New code sent!') } catch (err) { setError(err.message) } }}
+                  onChangeEmail={() => { setSignupStep('form'); setSignupOtp(''); setSuccess(''); setError('') }}
+                />
+              ) : (<>
               <label className="label">Account Type</label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6, marginBottom: 16 }}>
                 {[
@@ -367,9 +428,17 @@ export default function Home() {
                   {showPassword ? '👁️' : '🙈'}
                 </button>
               </div>
-              <button type="submit" className="btn-primary" disabled={loading} style={{ width: '100%', marginTop: 16, padding: 12, fontSize: '0.95rem', borderRadius: 12, textAlign: 'center' }}>
-                {loading ? 'Creating...' : 'Create Pet Profile 🐾'}
+              </>)}
+              <button type="submit" className="btn-primary" disabled={loading || (signupStep === 'otp' && signupOtp.length !== 6)} style={{ width: '100%', marginTop: 16, padding: 12, fontSize: '0.95rem', borderRadius: 12, textAlign: 'center' }}>
+                {signupStep === 'form'
+                  ? (loading ? 'Sending code...' : 'Continue — Verify Email 📧')
+                  : (loading ? 'Creating...' : 'Verify & Create Pet Profile 🐾')}
               </button>
+              <p style={{ textAlign: 'center', marginTop: 10, fontSize: '0.72rem', color: '#9CA3AF', lineHeight: 1.5 }}>
+                By creating an account, you agree to our{' '}
+                <a href="/terms-and-conditions" target="_blank" rel="noopener noreferrer" style={{ color: '#6C4BF6', fontWeight: 700 }}>Terms</a> and{' '}
+                <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: '#6C4BF6', fontWeight: 700 }}>Privacy Policy</a>.
+              </p>
             </form>
             <p style={{ textAlign: 'center', marginTop: 10, fontSize: '0.78rem', color: '#6B7280' }}>
               Already have an account?{' '}
@@ -385,11 +454,29 @@ export default function Home() {
             {unconfirmedEmail && (
               <div style={{ background: '#FFF8E1', border: '1px solid #FFC107', padding: '10px 12px', borderRadius: 8, fontSize: '0.82rem', marginBottom: 8 }}>
                 <div style={{ fontWeight: 700, color: '#92400E', marginBottom: 6 }}>📧 Email not confirmed yet</div>
-                <div style={{ color: '#78350F', marginBottom: 8 }}>Didn't get the email? We can resend it to <strong>{unconfirmedEmail}</strong></div>
-                <button type="button" onClick={handleResendConfirmation} disabled={resendLoading}
-                  style={{ background: '#FF6B35', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontFamily: 'Nunito, sans-serif', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}>
-                  {resendLoading ? 'Sending...' : '📨 Resend Confirmation Email'}
-                </button>
+                {!verifyOtpSent ? (
+                  <>
+                    <div style={{ color: '#78350F', marginBottom: 8 }}>We'll send a 6-digit code to <strong>{unconfirmedEmail}</strong></div>
+                    <button type="button" onClick={handleResendConfirmation} disabled={resendLoading}
+                      style={{ background: '#FF6B35', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontFamily: 'Nunito, sans-serif', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}>
+                      {resendLoading ? 'Sending...' : '📨 Send Verification Code'}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <OtpField
+                      email={unconfirmedEmail}
+                      value={verifyCode}
+                      onChange={setVerifyCode}
+                      cooldown={otpCooldown}
+                      onResend={handleResendConfirmation}
+                    />
+                    <button type="button" onClick={handleVerifyExistingEmail} disabled={resendLoading || verifyCode.length !== 6}
+                      style={{ width: '100%', marginTop: 10, background: '#FF6B35', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontFamily: 'Nunito, sans-serif', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', opacity: verifyCode.length === 6 ? 1 : 0.6 }}>
+                      {resendLoading ? 'Verifying...' : '✅ Verify & Sign In'}
+                    </button>
+                  </>
+                )}
               </div>
             )}
             {success && <div style={{ background: '#E8F8E8', color: '#22C55E', padding: '8px 12px', borderRadius: 8, fontSize: '0.82rem', marginBottom: 8 }}>{success}</div>}
@@ -420,18 +507,44 @@ export default function Home() {
         {mode === 'forgot' && (
           <div className="card" style={{ marginTop: 16, textAlign: 'left' }}>
             <h2 style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, fontSize: '1.35rem', textAlign: 'center', marginBottom: 8 }}>🔑 Reset Password</h2>
-            <p style={{ textAlign: 'center', color: '#6B7280', fontSize: '0.8rem', marginBottom: 12 }}>Enter your email and we'll send you a reset link</p>
+            <p style={{ textAlign: 'center', color: '#6B7280', fontSize: '0.8rem', marginBottom: 12 }}>
+              {resetStep === 'email' ? "Enter your email and we'll send you a 6-digit code" : 'Enter the code and choose a new password'}
+            </p>
             {error && <div style={{ background: '#FFDCE0', color: '#FF4757', padding: '8px 12px', borderRadius: 8, fontSize: '0.82rem', marginBottom: 8 }}>{error}</div>}
             {success && <div style={{ background: '#E8F8E8', color: '#22C55E', padding: '8px 12px', borderRadius: 8, fontSize: '0.82rem', marginBottom: 8 }}>{success}</div>}
             <form onSubmit={handleForgotPassword}>
-              <label className="label">Your Email</label>
-              <input className="input" type="email" value={resetEmail} onChange={e => setResetEmail(e.target.value)} placeholder="you@email.com" required />
-              <button type="submit" className="btn-primary" disabled={loading} style={{ width: '100%', marginTop: 16, padding: 12, fontSize: '0.95rem', borderRadius: 12 }}>
-                {loading ? 'Sending...' : '📧 Send Reset Link'}
+              {resetStep === 'email' ? (
+                <>
+                  <label className="label">Your Email</label>
+                  <input className="input" type="email" value={resetEmail} onChange={e => setResetEmail(e.target.value)} placeholder="you@email.com" required />
+                </>
+              ) : (
+                <>
+                  <OtpField
+                    email={resetEmail.trim().toLowerCase()}
+                    value={resetOtp}
+                    onChange={setResetOtp}
+                    cooldown={otpCooldown}
+                    onResend={async () => { setError(''); try { await sendOtp(resetEmail.trim().toLowerCase(), 'reset'); setSuccess('📧 New code sent!') } catch (err) { setError(err.message) } }}
+                    onChangeEmail={() => { setResetStep('email'); setResetOtp(''); setSuccess(''); setError('') }}
+                  />
+                  <label className="label">New Password</label>
+                  <input className="input" type={showPassword ? 'text' : 'password'} value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="At least 6 characters" required />
+                  <label className="label">Confirm New Password</label>
+                  <input className="input" type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Repeat your new password" required />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#6B7280', marginTop: 6, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={showPassword} onChange={e => setShowPassword(e.target.checked)} /> Show passwords
+                  </label>
+                </>
+              )}
+              <button type="submit" className="btn-primary" disabled={loading || (resetStep === 'otp' && resetOtp.length !== 6)} style={{ width: '100%', marginTop: 16, padding: 12, fontSize: '0.95rem', borderRadius: 12 }}>
+                {resetStep === 'email'
+                  ? (loading ? 'Sending...' : '📧 Send Reset Code')
+                  : (loading ? 'Updating...' : '✅ Reset Password')}
               </button>
             </form>
             <p style={{ textAlign: 'center', marginTop: 10, fontSize: '0.78rem', color: '#6B7280' }}>
-              <span onClick={() => { setMode('login'); setError(''); setSuccess('') }} style={{ color: '#FF6B35', fontWeight: 700, cursor: 'pointer' }}>← Back to Sign In</span>
+              <span onClick={() => { setMode('login'); setError(''); setSuccess(''); setResetStep('email') }} style={{ color: '#FF6B35', fontWeight: 700, cursor: 'pointer' }}>← Back to Sign In</span>
             </p>
           </div>
         )}
@@ -463,6 +576,37 @@ export default function Home() {
             </form>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+// 6-digit email code input used by signup, password reset and email verification.
+function OtpField({ email, value, onChange, cooldown, onResend, onChangeEmail }) {
+  return (
+    <div style={{ textAlign: 'center' }}>
+      <div style={{ fontSize: '2.2rem', marginBottom: 4 }}>📬</div>
+      <p style={{ color: '#6B7280', fontSize: '0.82rem', margin: '0 0 10px' }}>
+        Enter the 6-digit code sent to <strong style={{ color: '#1E1347' }}>{email}</strong>
+        <br /><span style={{ fontSize: '0.74rem' }}>Can't find it? Check your spam folder.</span>
+      </p>
+      <input
+        className="input"
+        value={value}
+        onChange={e => onChange(e.target.value.replace(/\D/g, '').slice(0, 6))}
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        autoFocus
+        placeholder="••••••"
+        aria-label="Verification code"
+        style={{ width: '100%', boxSizing: 'border-box', textAlign: 'center', fontSize: '1.6rem', fontWeight: 800, letterSpacing: '0.5em', paddingLeft: '0.5em' }}
+      />
+      <div style={{ display: 'flex', justifyContent: onChangeEmail ? 'space-between' : 'center', marginTop: 8, fontSize: '0.78rem' }}>
+        {onChangeEmail && (
+          <span onClick={onChangeEmail} style={{ color: '#6B7280', fontWeight: 700, cursor: 'pointer' }}>← Change email</span>
+        )}
+        {cooldown > 0
+          ? <span style={{ color: '#9CA3AF', fontWeight: 700 }}>Resend code in {cooldown}s</span>
+          : <span onClick={onResend} style={{ color: '#6C4BF6', fontWeight: 700, cursor: 'pointer' }}>Resend code</span>}
       </div>
     </div>
   )
