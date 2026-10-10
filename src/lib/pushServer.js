@@ -3,7 +3,7 @@ import webpush from 'web-push'
 
 // Must match the public key used by src/lib/push.js when browsers subscribe
 // (NEXT_PUBLIC_VAPID_PUBLIC_KEY in .env.local is a different, unused key).
-const VAPID_PUBLIC_KEY = 'BMkQXUNaNbEpyVYllsyc4784dZJM2dMwAwoWJCnqBjOsjcu9QFPWWZ60L_wRMw-FZAYdMCZTnooVtth3V5VEzB38'
+const VAPID_PUBLIC_KEY = 'BMkQXUNaNbEpyVYllsyc4784dZJM2dMwAwoWJCnqBjOsjcu9QFPWZ60L_wRMw-FZAYdMCZTnooVtth3V5VEzB38'
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || 'ytm81NBachqjG7CSzcOHPQM_zJbIqswM0lqrjjtzuiU'
 
 webpush.setVapidDetails('mailto:support@pawversesocial.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
